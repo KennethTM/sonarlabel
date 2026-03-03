@@ -53,6 +53,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #label-panel .label-btn:hover { opacity: 0.85; }
 #label-panel .label-btn.selected { opacity: 1; font-weight: bold; box-shadow: 0 0 6px currentColor; }
 
+/* Hints bar */
+#hints-bar { display: flex; gap: 16px; flex-wrap: wrap; padding: 4px 10px; background: #0d1b36; border-top: 1px solid #0f3460; font-size: 11px; color: #5a5a7a; }
+#hints-bar b { color: #8888a0; }
+
 #sonar-area { border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
 
 /* Depth info overlay */
@@ -99,10 +103,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </select>
   </label>
   <div class="sep"></div>
-  <button id="btn-save-annotations">Save Annotations</button>
+  <button id="btn-download" type="button">Save Annotations</button>
   <label>Load Annotations: <input type="file" id="load-annotations" accept=".jsonl"></label>
-  <div class="sep"></div>
-  <button id="btn-download">Download Annotations</button>
   <span id="app-version" style="font-size:12px; color:#7a7aa0;">SonarLabel version 1.0.0</span>
   <span id="status">Load an SL3 file to begin</span>
 </div>
@@ -132,6 +134,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </div>
     <div id="label-panel">
       <span style="color:#7a7aa0;">Labels:</span>
+    </div>
+    <div id="hints-bar">
+      <span>🖱 <b>Scroll</b> — pan vertically</span>
+      <span>⇧ <b>Shift+Scroll</b> — pan horizontally</span>
+      <span>⌥ <b>Alt+Scroll</b> — zoom at cursor</span>
+      <span><b>D</b> — draw &nbsp;|&nbsp; <b>X</b> — delete &nbsp;|&nbsp; <b>R</b> — reset view</span>
     </div>
   </div>
 </div>
@@ -251,7 +259,6 @@ let drawingMode = false;
 let deleteMode = false;
 let currentPolygon = []; // vertices being drawn
 let nextAnnotationId = 1;
-let fileHandle = null; // File System Access API handle
 let map, trackLine, highlightLine, trackPoints;
 let isDraggingScrollbar = false;
 let currentPalette = 'sonarlight';
@@ -283,7 +290,6 @@ function bindUIRefs() {
     labelPanel: document.getElementById('label-panel'),
     fileInput: document.getElementById('file-input'),
     loadAnnotationsInput: document.getElementById('load-annotations'),
-    btnSaveAnnotations: document.getElementById('btn-save-annotations'),
     btnDownload: document.getElementById('btn-download'),
     btnResetView: document.getElementById('btn-reset-view'),
     contextMenu: document.getElementById('context-menu'),
@@ -1094,44 +1100,13 @@ function hideNewLabelDialog() {
 }
 
 // ========== ANNOTATION PERSISTENCE ==========
-async function saveAnnotations() {
+function saveAnnotations() {
   const normalized = annotations.map(normalizeAnnotationObject).filter(Boolean);
   annotations = normalized;
   const jsonl = normalized.map(a => JSON.stringify(a)).join('\n');
-
-  // Try File System Access API
-  if (fileHandle) {
-    try {
-      const writable = await fileHandle.createWritable();
-      await writable.write(jsonl);
-      await writable.close();
-      return;
-    } catch (e) {
-      console.warn('File write failed:', e);
-    }
-  }
-
-  // Fallback: save to localStorage
   try {
     localStorage.setItem('sonarlabel_annotations', jsonl);
   } catch (e) {}
-}
-
-async function setupSaveFile() {
-  if (!('showSaveFilePicker' in window)) {
-    alert('File System Access API not supported. Use the Download button to save annotations.');
-    return;
-  }
-  try {
-    fileHandle = await window.showSaveFilePicker({
-      suggestedName: 'annotations.jsonl',
-      types: [{ description: 'JSONL', accept: { 'application/jsonl': ['.jsonl'] } }],
-    });
-    setStatus('Auto-saving to file');
-    saveAnnotations();
-  } catch (e) {
-    // User cancelled
-  }
 }
 
 function downloadAnnotations() {
@@ -1270,7 +1245,6 @@ function init() {
   ui.btnResetView.addEventListener('click', resetView);
 
   // Save/Load
-  ui.btnSaveAnnotations.addEventListener('click', setupSaveFile);
   ui.btnDownload.addEventListener('click', downloadAnnotations);
   ui.loadAnnotationsInput.addEventListener('change', (e) => {
     if (e.target.files[0]) loadAnnotations(e.target.files[0]);
