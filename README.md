@@ -1,5 +1,9 @@
 # SonarLabel
 
+URL:
+
+https://kennethtm.github.io/sonarlabel/
+
 Minimal repo with:
 
 - `index.html` (web annotator)
