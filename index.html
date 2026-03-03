@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SonarLabel - Sidescan Sonar Annotator</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Top bar */
+#toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #16213e; border-bottom: 1px solid #0f3460; flex-wrap: wrap; min-height: 44px; }
+#toolbar label { font-size: 13px; color: #a0a0c0; }
+#toolbar input[type="file"] { font-size: 12px; max-width: 200px; }
+#toolbar button { padding: 4px 12px; background: #0f3460; color: #e0e0e0; border: 1px solid #1a5276; border-radius: 4px; cursor: pointer; font-size: 12px; }
+#toolbar button:hover { background: #1a5276; }
+#toolbar button.active { background: #e94560; border-color: #e94560; }
+#toolbar input[type="number"] { width: 60px; padding: 2px 4px; background: #0d1b36; color: #e0e0e0; border: 1px solid #1a5276; border-radius: 3px; font-size: 12px; }
+#toolbar select { padding: 2px 6px; background: #0d1b36; color: #e0e0e0; border: 1px solid #1a5276; border-radius: 3px; font-size: 12px; }
+#toolbar .sep { width: 1px; height: 24px; background: #0f3460; }
+#status { font-size: 12px; color: #7a7aa0; margin-left: auto; }
+
+/* Main layout */
+#main { display: flex; overflow: auto; padding: 8px; gap: 8px; align-items: stretch; }
+#map-panel { width: 33.3%; min-width: 250px; display: flex; flex-direction: column; border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
+#map { flex: 1; min-height: 0; }
+#map-info { padding: 6px 10px; background: #16213e; font-size: 12px; color: #a0a0c0; border-top: 1px solid #0f3460; }
+
+#sonar-panel { display: flex; flex-direction: column; position: relative; }
+#sonar-area { display: flex; flex-direction: row; }
+#sonar-container { overflow: hidden; position: relative; cursor: crosshair; }
+#sonar-canvas { display: block; }
+#annotation-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+#sonar-container.drawing #annotation-canvas { pointer-events: auto; cursor: crosshair; }
+
+/* Vertical scrollbar */
+#sonar-scrollbar { width: 18px; background: #0d1b36; border-left: 1px solid #0f3460; display: flex; align-items: center; justify-content: center; }
+#scrollbar-track { width: 10px; height: 100%; background: #16213e; border-radius: 5px; position: relative; cursor: pointer; }
+#scrollbar-thumb { width: 10px; background: #0f3460; border-radius: 5px; position: absolute; left: 0; min-height: 20px; cursor: grab; }
+#scrollbar-thumb:hover { background: #1a5276; }
+
+/* Vertical zoom control */
+#zoom-panel { width: 42px; background: #0d1b36; border-left: 1px solid #0f3460; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px 0; }
+#zoom-x { writing-mode: vertical-lr; direction: rtl; width: 24px; height: 100%; max-height: 260px; }
+#zoom-x-label { font-size: 11px; color: #a0a0c0; min-width: 32px; text-align: center; }
+#btn-reset-view { padding: 2px 6px; font-size: 11px; }
+
+/* Label panel */
+#label-panel { padding: 6px 10px; background: #16213e; border-top: 1px solid #0f3460; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+#label-panel .label-btn { padding: 3px 10px; border-radius: 3px; cursor: pointer; border: 2px solid; background: transparent; font-size: 12px; color: #8888a0; opacity: 0.6; transition: all 0.15s; }
+#label-panel .label-btn:hover { opacity: 0.85; }
+#label-panel .label-btn.selected { opacity: 1; font-weight: bold; box-shadow: 0 0 6px currentColor; }
+
+#sonar-area { border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
+
+/* Depth info overlay */
+#depth-info { position: absolute; top: 8px; right: 24px; background: rgba(22,33,62,0.9); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #a0a0c0; pointer-events: none; z-index: 10; }
+
+/* Context menu for polygon labels */
+#context-menu { position: fixed; background: #16213e; border: 1px solid #0f3460; border-radius: 4px; padding: 4px 0; z-index: 1000; display: none; min-width: 120px; }
+#context-menu div { padding: 6px 16px; cursor: pointer; font-size: 13px; }
+#context-menu div:hover { background: #0f3460; }
+#context-menu .delete-option { color: #e94560; border-top: 1px solid #0f3460; }
+
+/* Loading overlay */
+#loading { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 2000; flex-direction: column; gap: 16px; }
+#loading.visible { display: flex; }
+#loading-text { font-size: 16px; color: #e0e0e0; }
+#loading-bar { width: 300px; height: 6px; background: #0d1b36; border-radius: 3px; overflow: hidden; }
+#loading-fill { height: 100%; background: #e94560; width: 0%; transition: width 0.2s; }
+
+/* New label dialog */
+#new-label-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 20px; z-index: 2000; display: none; }
+#new-label-dialog input { padding: 6px 10px; background: #0d1b36; color: #e0e0e0; border: 1px solid #1a5276; border-radius: 4px; font-size: 14px; }
+#new-label-dialog .dialog-btns { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.overlay-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1999; display: none; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <label>SL3 File: <input type="file" id="file-input" accept=".sl3"></label>
+  <div class="sep"></div>
+  <button id="btn-draw" title="Draw polygon (D)">Draw (D)</button>
+  <button id="btn-delete-mode" title="Delete mode (X)">Delete (X)</button>
+  <div class="sep"></div>
+  <label>Width: <input type="number" id="view-width" value="800" min="300" max="3000" step="50"></label>
+  <label>Height: <input type="number" id="view-height" value="600" min="200" max="2000" step="50"></label>
+  <label>Palette:
+    <select id="palette-select">
+      <option value="sonarlight">Default</option>
+      <option value="viridis">Viridis</option>
+      <option value="plasma">Plasma</option>
+      <option value="inferno">Inferno</option>
+      <option value="cividis">Cividis</option>
+      <option value="gray">Gray</option>
+    </select>
+  </label>
+  <div class="sep"></div>
+  <button id="btn-save-annotations">Save Annotations</button>
+  <label>Load Annotations: <input type="file" id="load-annotations" accept=".jsonl"></label>
+  <div class="sep"></div>
+  <button id="btn-download">Download Annotations</button>
+  <span id="app-version" style="font-size:12px; color:#7a7aa0;">SonarLabel version 1.0.0</span>
+  <span id="status">Load an SL3 file to begin</span>
+</div>
+
+<div id="main">
+  <div id="map-panel">
+    <div id="map"></div>
+    <div id="map-info">No data loaded</div>
+  </div>
+  <div id="sonar-panel">
+    <div id="depth-info">Depth: --</div>
+    <div id="sonar-area">
+      <div id="sonar-container">
+        <canvas id="sonar-canvas"></canvas>
+        <canvas id="annotation-canvas"></canvas>
+      </div>
+      <div id="sonar-scrollbar">
+        <div id="scrollbar-track">
+          <div id="scrollbar-thumb"></div>
+        </div>
+      </div>
+      <div id="zoom-panel" title="Alt+Wheel to zoom at cursor. Shift+Wheel to pan horizontally.">
+        <span id="zoom-x-label">1.00x</span>
+        <input type="range" id="zoom-x" min="1" max="8" step="0.25" value="1">
+        <button id="btn-reset-view" title="Reset zoom and horizontal pan (R)">Reset (R)</button>
+      </div>
+    </div>
+    <div id="label-panel">
+      <span style="color:#7a7aa0;">Labels:</span>
+    </div>
+  </div>
+</div>
+
+<div id="context-menu">
+</div>
+
+<div id="loading">
+  <div id="loading-text">Loading...</div>
+  <div id="loading-bar"><div id="loading-fill"></div></div>
+</div>
+
+<div class="overlay-bg" id="overlay-bg"></div>
+<div id="new-label-dialog">
+  <div style="margin-bottom:8px; font-size:14px;">Add New Label</div>
+  <input type="text" id="new-label-name" placeholder="Label name">
+  <input type="color" id="new-label-color" value="#00bfff" style="margin-left:8px; height:30px;">
+  <div class="dialog-btns">
+    <button id="new-label-cancel">Cancel</button>
+    <button id="new-label-ok">Add</button>
+  </div>
+</div>
+
+<script>
+// ========== CONSTANTS ==========
+const EARTH_POLAR_RADIUS = 6356752.3142;
+const FEET_TO_METERS = 1 / 3.2808399;
+const FILE_HEADER_SIZE = 8;
+const SL3_HEADER_SIZE = 168;
+const VERSION = '1.0.0';
+const FRAME_PROGRESS_CHUNK = 5000;
+const ZOOM_WHEEL_FACTOR = 1.15;
+const HORIZONTAL_PAN_RATIO = 0.08;
+const HORIZONTAL_PAN_MIN = 10;
+const SCROLL_STEP_RATIO = 0.1;
+const SCROLL_STEP_MIN = 10;
+const WHEEL_PAN_DIVISOR = 500;
+const SCROLLBAR_MIN_THUMB_HEIGHT = 20;
+const SELECTED_LABEL_BG_ALPHA = '30';
+
+// ========== SONAR COLOR PALETTE ==========
+function buildPaletteFromStops(stops) {
+  const palette = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    let s0 = stops[0], s1 = stops[stops.length - 1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (i >= stops[s][0] && i <= stops[s + 1][0]) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const t = s1[0] === s0[0] ? 0 : (i - s0[0]) / (s1[0] - s0[0]);
+    palette[i * 3] = Math.round(s0[1] + t * (s1[1] - s0[1]));
+    palette[i * 3 + 1] = Math.round(s0[2] + t * (s1[2] - s0[2]));
+    palette[i * 3 + 2] = Math.round(s0[3] + t * (s1[3] - s0[3]));
+  }
+  return palette;
+}
+
+const PALETTES = {
+  sonarlight: buildPaletteFromStops([
+    [0, 0, 0, 0],
+    [32, 40, 25, 16],
+    [64, 80, 50, 32],
+    [96, 120, 75, 48],
+    [128, 160, 100, 64],
+    [160, 200, 125, 80],
+    [192, 240, 150, 96],
+    [208, 255, 162, 104],
+    [224, 255, 174, 112],
+    [240, 255, 186, 120],
+    [255, 255, 199, 127],
+  ]),
+  viridis: buildPaletteFromStops([
+    [0, 68, 1, 84],
+    [64, 59, 82, 139],
+    [128, 33, 145, 140],
+    [192, 94, 201, 98],
+    [255, 253, 231, 37],
+  ]),
+  plasma: buildPaletteFromStops([
+    [0, 13, 8, 135],
+    [64, 126, 3, 167],
+    [128, 203, 71, 119],
+    [192, 248, 149, 64],
+    [255, 240, 249, 33],
+  ]),
+  inferno: buildPaletteFromStops([
+    [0, 0, 0, 4],
+    [64, 87, 15, 109],
+    [128, 187, 55, 84],
+    [192, 249, 142, 8],
+    [255, 252, 255, 164],
+  ]),
+  cividis: buildPaletteFromStops([
+    [0, 0, 32, 76],
+    [64, 40, 72, 88],
+    [128, 87, 117, 109],
+    [192, 152, 161, 121],
+    [255, 253, 234, 69],
+  ]),
+  gray: buildPaletteFromStops([
+    [0, 0, 0, 0],
+    [255, 255, 255, 255],
+  ]),
+};
+
+// ========== STATE ==========
+let sonarData = null; // { width, totalRows, echoData: Uint8Array, frames: [{lat,lon,depth}] }
+let scrollTop = 0;
+let viewWidth = 800;
+let viewHeight = 600;
+let annotations = []; // [{id, label, polygon:[[row,col],...]}]
+let labelClasses = [
+  { name: 'fish', color: '#e94560' },
+  { name: 'plant', color: '#4ecca3' },
+];
+let selectedLabel = 'fish';
+let drawingMode = false;
+let deleteMode = false;
+let currentPolygon = []; // vertices being drawn
+let nextAnnotationId = 1;
+let fileHandle = null; // File System Access API handle
+let map, trackLine, highlightLine, trackPoints;
+let isDraggingScrollbar = false;
+let currentPalette = 'sonarlight';
+let zoomX = 1;
+let colOffset = 0;
+let lastMouseDisplayX = viewWidth / 2;
+let ui = {};
+
+function bindUIRefs() {
+  ui = {
+    status: document.getElementById('status'),
+    mapInfo: document.getElementById('map-info'),
+    loading: document.getElementById('loading'),
+    loadingText: document.getElementById('loading-text'),
+    loadingFill: document.getElementById('loading-fill'),
+    sonarContainer: document.getElementById('sonar-container'),
+    sonarCanvas: document.getElementById('sonar-canvas'),
+    annotationCanvas: document.getElementById('annotation-canvas'),
+    depthInfo: document.getElementById('depth-info'),
+    scrollbarTrack: document.getElementById('scrollbar-track'),
+    scrollbarThumb: document.getElementById('scrollbar-thumb'),
+    btnDraw: document.getElementById('btn-draw'),
+    btnDeleteMode: document.getElementById('btn-delete-mode'),
+    zoomInput: document.getElementById('zoom-x'),
+    zoomLabel: document.getElementById('zoom-x-label'),
+    viewWidthInput: document.getElementById('view-width'),
+    viewHeightInput: document.getElementById('view-height'),
+    paletteSelect: document.getElementById('palette-select'),
+    labelPanel: document.getElementById('label-panel'),
+    fileInput: document.getElementById('file-input'),
+    loadAnnotationsInput: document.getElementById('load-annotations'),
+    btnSaveAnnotations: document.getElementById('btn-save-annotations'),
+    btnDownload: document.getElementById('btn-download'),
+    btnResetView: document.getElementById('btn-reset-view'),
+    contextMenu: document.getElementById('context-menu'),
+    appVersion: document.getElementById('app-version'),
+    overlayBg: document.getElementById('overlay-bg'),
+    newLabelDialog: document.getElementById('new-label-dialog'),
+    newLabelName: document.getElementById('new-label-name'),
+    newLabelColor: document.getElementById('new-label-color'),
+    newLabelCancel: document.getElementById('new-label-cancel'),
+    newLabelOk: document.getElementById('new-label-ok'),
+  };
+}
+
+function setStatus(text) {
+  if (ui.status) ui.status.textContent = text;
+}
+
+function refreshSonarView() {
+  renderSonar();
+  updateMapHighlight();
+}
+
+function normalizePolygonPoint(point) {
+  if (!Array.isArray(point) || point.length !== 2) return null;
+  const row = Number(point[0]);
+  const col = Number(point[1]);
+  if (!Number.isFinite(row) || !Number.isFinite(col)) return null;
+  return [Math.round(row), Math.round(col)];
+}
+
+function normalizeAnnotationObject(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const rawPolygon = Array.isArray(obj.polygon) ? obj.polygon : [];
+  const polygon = rawPolygon.map(normalizePolygonPoint).filter(Boolean);
+  if (polygon.length < 3) return null;
+
+  let id = Number(obj.id);
+  if (!Number.isInteger(id) || id < 1) {
+    id = nextAnnotationId++;
+  } else if (id >= nextAnnotationId) {
+    nextAnnotationId = id + 1;
+  }
+
+  const label = String(obj.label || selectedLabel || 'fish').trim() || 'fish';
+
+  if (sonarData) {
+    const maxRow = sonarData.totalRows - 1;
+    const maxCol = sonarData.width - 1;
+    for (let i = 0; i < polygon.length; i++) {
+      const p = polygon[i];
+      p[0] = Math.max(0, Math.min(maxRow, p[0]));
+      p[1] = Math.max(0, Math.min(maxCol, p[1]));
+    }
+  }
+
+  return {
+    id,
+    label,
+    polygon,
+    timestamp: obj.timestamp || new Date().toISOString(),
+  };
+}
+
+function colorForLabelName(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  const hue = hash % 360;
+  return `hsl(${hue}, 70%, 55%)`;
+}
+
+function ensureLoadedLabelsExist() {
+  const existing = new Set(labelClasses.map(l => l.name));
+  for (const ann of annotations) {
+    if (!existing.has(ann.label)) {
+      labelClasses.push({ name: ann.label, color: colorForLabelName(ann.label) });
+      existing.add(ann.label);
+    }
+  }
+  if (!existing.has(selectedLabel) && labelClasses.length > 0) {
+    selectedLabel = labelClasses[0].name;
+  }
+}
+
+function parseAnnotationText(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  // JSONL only
+  const lines = trimmed.split('\n');
+  const jsonlRecords = [];
+  for (const line of lines) {
+    const ln = line.trim();
+    if (!ln) continue;
+    try {
+      jsonlRecords.push(JSON.parse(ln));
+    } catch (e) {
+      return [];
+    }
+  }
+  return jsonlRecords;
+}
+
+function getVisibleCols() {
+  if (!sonarData) return viewWidth;
+  return Math.max(1, sonarData.width / zoomX);
+}
+
+function clampColOffset() {
+  if (!sonarData) {
+    colOffset = 0;
+    return;
+  }
+  const maxOffset = Math.max(0, sonarData.width - getVisibleCols());
+  colOffset = Math.max(0, Math.min(maxOffset, colOffset));
+}
+
+function setZoomAtDisplayX(newZoom, displayX) {
+  if (!sonarData) return;
+  const oldVisible = getVisibleCols();
+  const anchorRatio = Math.max(0, Math.min(1, displayX / viewWidth));
+  const anchorCol = colOffset + anchorRatio * oldVisible;
+
+  zoomX = Math.max(1, Math.min(8, newZoom));
+  const newVisible = getVisibleCols();
+  colOffset = anchorCol - anchorRatio * newVisible;
+  clampColOffset();
+
+  const zoomInput = ui.zoomInput;
+  const zoomLabel = ui.zoomLabel;
+  if (zoomInput) zoomInput.value = zoomX.toFixed(2);
+  if (zoomLabel) zoomLabel.textContent = `${zoomX.toFixed(2)}x`;
+}
+
+function resetView() {
+  zoomX = 1;
+  colOffset = 0;
+  const zoomInput = ui.zoomInput;
+  const zoomLabel = ui.zoomLabel;
+  if (zoomInput) zoomInput.value = '1';
+  if (zoomLabel) zoomLabel.textContent = '1.00x';
+  if (sonarData) renderSonar();
+}
+
+// ========== COORDINATE CONVERSION ==========
+function x2lon(x) { return (x / EARTH_POLAR_RADIUS) * (180 / Math.PI); }
+function y2lat(y) { return ((2 * Math.atan(Math.exp(y / EARTH_POLAR_RADIUS))) - (Math.PI / 2)) * (180 / Math.PI); }
+
+// ========== SL3 PARSER ==========
+async function parseSL3(file) {
+  showLoading('Reading file...');
+  const buffer = await file.arrayBuffer();
+  const view = new DataView(buffer);
+
+  // File header
+  const version = view.getInt16(0, true);
+  const deviceId = view.getInt16(2, true);
+
+  showLoading('Parsing frames...');
+
+  // First pass: decode frame headers using the same walk logic as Sonar._decode()
+  // (position += frame_size, append frame only if new position < buffer length).
+  const SL3_OFFSETS = {
+    frameSize: 8,
+    surveyType: 12,
+    minRange: 20,
+    maxRange: 24,
+    hardwareTime: 40,
+    echoSize: 44,
+    waterDepth: 48,
+    gpsSpeed: 84,
+    x: 92,
+    y: 96,
+    gpsHeading: 104,
+    seconds: 120,
+  };
+
+  // Keep only survey_type == 5 (combined sidescan), matching Sonar survey mapping.
+  const sidescanFrames = [];
+  let pos = FILE_HEADER_SIZE;
+  let frameCount = 0;
+
+  while (pos < buffer.byteLength) {
+    if (pos + SL3_HEADER_SIZE > buffer.byteLength) break;
+
+    const frameSize = view.getUint16(pos + SL3_OFFSETS.frameSize, true);
+    if (frameSize === 0) break;
+
+    const frameStart = pos;
+    pos += frameSize;
+    if (pos > buffer.byteLength) break;
+
+    frameCount++;
+
+    if (pos < buffer.byteLength) {
+      const surveyType = view.getUint16(frameStart + SL3_OFFSETS.surveyType, true);
+
+      if (surveyType === 5) {
+        const x = view.getInt32(frameStart + SL3_OFFSETS.x, true);
+        const y = view.getInt32(frameStart + SL3_OFFSETS.y, true);
+        const minRange = view.getFloat32(frameStart + SL3_OFFSETS.minRange, true) * FEET_TO_METERS;
+        const maxRange = view.getFloat32(frameStart + SL3_OFFSETS.maxRange, true) * FEET_TO_METERS;
+        const waterDepth = view.getFloat32(frameStart + SL3_OFFSETS.waterDepth, true) * FEET_TO_METERS;
+        const gpsSpeed = view.getFloat32(frameStart + SL3_OFFSETS.gpsSpeed, true) * 0.5144;
+        const gpsHeading = view.getFloat32(frameStart + SL3_OFFSETS.gpsHeading, true);
+        const hardwareTime = view.getUint32(frameStart + SL3_OFFSETS.hardwareTime, true);
+        const seconds = view.getUint32(frameStart + SL3_OFFSETS.seconds, true) / 1000;
+        const echoSize = view.getUint32(frameStart + SL3_OFFSETS.echoSize, true);
+
+        sidescanFrames.push({
+          offset: frameStart,
+          x,
+          y,
+          lat: y2lat(y),
+          lon: x2lon(x),
+          minRange,
+          maxRange,
+          depth: waterDepth,
+          gpsSpeed,
+          gpsHeading,
+          hardwareTime,
+          seconds,
+          datetime: new Date((hardwareTime + seconds) * 1000),
+          echoSize,
+        });
+      }
+    }
+
+    if (frameCount % FRAME_PROGRESS_CHUNK === 0) {
+      setLoadingProgress(Math.min(90, (pos / buffer.byteLength) * 90));
+      await yieldToUI();
+    }
+  }
+
+  if (sidescanFrames.length === 0) {
+    hideLoading();
+    alert('No sidescan frames found in file.');
+    return null;
+  }
+
+  // Determine consistent width (use first frame's echo size)
+  const width = sidescanFrames[0].echoSize;
+  const totalRows = sidescanFrames.length;
+
+  showLoading(`Extracting ${totalRows} sidescan rows...`);
+
+  // Build contiguous echo data array
+  const echoData = new Uint8Array(totalRows * width);
+  const frames = [];
+
+  for (let i = 0; i < sidescanFrames.length; i++) {
+    const sf = sidescanFrames[i];
+    const echoStart = sf.offset + SL3_HEADER_SIZE;
+    const copyLen = Math.min(sf.echoSize, width);
+    const src = new Uint8Array(buffer, echoStart, copyLen);
+    echoData.set(src, i * width);
+
+    frames.push({ lat: sf.lat, lon: sf.lon, depth: sf.depth });
+
+    if (i % FRAME_PROGRESS_CHUNK === 0) {
+      setLoadingProgress(90 + (i / sidescanFrames.length) * 10);
+      await yieldToUI();
+    }
+  }
+
+  hideLoading();
+
+  return { width, totalRows, echoData, frames, version, deviceId, frameCount };
+}
+
+function yieldToUI() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+// ========== LOADING UI ==========
+function showLoading(text) {
+  ui.loading.classList.add('visible');
+  ui.loadingText.textContent = text;
+}
+function setLoadingProgress(pct) {
+  ui.loadingFill.style.width = pct + '%';
+}
+function hideLoading() {
+  ui.loading.classList.remove('visible');
+  ui.loadingFill.style.width = '0%';
+}
+
+// ========== MAP ==========
+function initMap() {
+  map = L.map('map', { zoomControl: true }).setView([56, 10], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+}
+
+function updateMap() {
+  if (!sonarData) return;
+
+  // Remove old layers
+  if (trackLine) map.removeLayer(trackLine);
+  if (highlightLine) map.removeLayer(highlightLine);
+  if (trackPoints) map.removeLayer(trackPoints);
+
+  const coords = sonarData.frames.map(f => [f.lat, f.lon]);
+
+  // Full track
+  trackLine = L.polyline(coords, { color: '#4a6fa5', weight: 2, opacity: 0.6 }).addTo(map);
+
+  // Fit bounds
+  map.fitBounds(trackLine.getBounds().pad(0.1));
+
+  // Highlighted section (will be updated on scroll)
+  highlightLine = L.polyline([], { color: '#e94560', weight: 4, opacity: 0.9 }).addTo(map);
+
+  updateMapHighlight();
+}
+
+function updateMapHighlight() {
+  if (!sonarData || !highlightLine) return;
+
+  const startRow = scrollTop;
+  const endRow = Math.min(scrollTop + viewHeight, sonarData.totalRows);
+  const coords = [];
+  // Sample every few rows for performance
+  const step = Math.max(1, Math.floor((endRow - startRow) / 100));
+  for (let i = startRow; i < endRow; i += step) {
+    const f = sonarData.frames[i];
+    coords.push([f.lat, f.lon]);
+  }
+  if (endRow - 1 >= 0 && endRow - 1 < sonarData.totalRows) {
+    const last = sonarData.frames[endRow - 1];
+    coords.push([last.lat, last.lon]);
+  }
+
+  highlightLine.setLatLngs(coords);
+}
+
+// ========== SONAR CANVAS ==========
+function renderSonar() {
+  if (!sonarData) return;
+
+  const canvas = ui.sonarCanvas;
+  const ctx = canvas.getContext('2d');
+  const dw = viewWidth;
+  const dataW = sonarData.width;
+  const h = Math.min(viewHeight, sonarData.totalRows - scrollTop);
+
+  canvas.width = dw;
+  canvas.height = viewHeight;
+
+  // Also resize annotation canvas
+  const aCanvas = ui.annotationCanvas;
+  aCanvas.width = dw;
+  aCanvas.height = viewHeight;
+
+  if (h <= 0) { ctx.clearRect(0, 0, dw, viewHeight); renderAnnotations(); return; }
+
+  const imgData = ctx.createImageData(dw, h);
+  const pixels = imgData.data;
+  const palette = PALETTES[currentPalette] || PALETTES.sonarlight;
+  clampColOffset();
+  const visibleCols = getVisibleCols();
+
+  // Scale data width -> display width with nearest-neighbor sampling + palette
+  for (let row = 0; row < h; row++) {
+    const echoRowOffset = (scrollTop + row) * dataW;
+    for (let col = 0; col < dw; col++) {
+      const srcCol = Math.min(dataW - 1, Math.floor(colOffset + (col * visibleCols / dw)));
+      const val = sonarData.echoData[echoRowOffset + srcCol];
+      const idx = (row * dw + col) * 4;
+      pixels[idx] = palette[val * 3];
+      pixels[idx + 1] = palette[val * 3 + 1];
+      pixels[idx + 2] = palette[val * 3 + 2];
+      pixels[idx + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+
+  // Clear any remaining area below data
+  if (h < viewHeight) {
+    ctx.fillStyle = '#0d1b36';
+    ctx.fillRect(0, h, dw, viewHeight - h);
+  }
+
+  renderAnnotations();
+  updateDepthInfo();
+  updateScrollbar();
+}
+
+// Convert raw data col to display col and vice versa
+function dataColToDisplay(col) {
+  if (!sonarData) return col;
+  return (col - colOffset) * viewWidth / getVisibleCols();
+}
+function displayColToData(col) {
+  if (!sonarData) return col;
+  return colOffset + col * getVisibleCols() / viewWidth;
+}
+
+function updateDepthInfo() {
+  if (!sonarData) return;
+  const midRow = Math.min(scrollTop + Math.floor(viewHeight / 2), sonarData.totalRows - 1);
+  const f = sonarData.frames[midRow];
+  const colStart = Math.round(colOffset);
+  const colEnd = Math.round(Math.min(sonarData.width, colOffset + getVisibleCols()));
+  ui.depthInfo.textContent =
+    `Row: ${scrollTop}-${Math.min(scrollTop + viewHeight, sonarData.totalRows)} / ${sonarData.totalRows} | Col: ${colStart}-${colEnd} / ${sonarData.width} | Zoom: ${zoomX.toFixed(2)}x | Depth: ${f.depth.toFixed(1)}m`;
+}
+
+// ========== SCROLLBAR (VERTICAL) ==========
+function updateScrollbar() {
+  if (!sonarData) return;
+  const track = ui.scrollbarTrack;
+  const thumb = ui.scrollbarThumb;
+  const trackHeight = track.clientHeight;
+  const ratio = viewHeight / sonarData.totalRows;
+  const thumbHeight = Math.max(SCROLLBAR_MIN_THUMB_HEIGHT, trackHeight * ratio);
+  const maxScroll = sonarData.totalRows - viewHeight;
+  const thumbPos = maxScroll > 0 ? (scrollTop / maxScroll) * (trackHeight - thumbHeight) : 0;
+
+  thumb.style.height = thumbHeight + 'px';
+  thumb.style.top = thumbPos + 'px';
+}
+
+function initScrollbar() {
+  const track = ui.scrollbarTrack;
+  const thumb = ui.scrollbarThumb;
+
+  thumb.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isDraggingScrollbar = true;
+    const startY = e.clientY;
+    const startTop = parseFloat(thumb.style.top) || 0;
+
+    const onMove = (e2) => {
+      const dy = e2.clientY - startY;
+      const trackHeight = track.clientHeight;
+      const thumbHeight = thumb.clientHeight;
+      const maxTop = trackHeight - thumbHeight;
+      const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
+      const maxScroll = sonarData.totalRows - viewHeight;
+      scrollTop = Math.round((newTop / maxTop) * maxScroll);
+      if (isNaN(scrollTop)) scrollTop = 0;
+      refreshSonarView();
+    };
+    const onUp = () => {
+      isDraggingScrollbar = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  track.addEventListener('click', (e) => {
+    if (isDraggingScrollbar || !sonarData) return;
+    const rect = track.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const ratio = clickY / rect.height;
+    const maxScroll = sonarData.totalRows - viewHeight;
+    scrollTop = Math.round(ratio * maxScroll);
+    scrollTop = Math.max(0, Math.min(maxScroll, scrollTop));
+    refreshSonarView();
+  });
+}
+
+// ========== SCROLL WITH MOUSE WHEEL ==========
+function initScrollWheel() {
+  const container = ui.sonarContainer;
+  container.addEventListener('mousemove', (e) => {
+    const rect = container.getBoundingClientRect();
+    lastMouseDisplayX = Math.max(0, Math.min(viewWidth, e.clientX - rect.left));
+  });
+
+  container.addEventListener('wheel', (e) => {
+    if (!sonarData) return;
+    e.preventDefault();
+
+    if (e.altKey) {
+      const rect = container.getBoundingClientRect();
+      const displayX = Math.max(0, Math.min(viewWidth, e.clientX - rect.left));
+      const zoomStep = e.deltaY < 0 ? ZOOM_WHEEL_FACTOR : 1 / ZOOM_WHEEL_FACTOR;
+      setZoomAtDisplayX(zoomX * zoomStep, displayX);
+      renderSonar();
+      return;
+    }
+
+    if (e.shiftKey) {
+      const panStep = Math.max(HORIZONTAL_PAN_MIN, Math.floor(getVisibleCols() * HORIZONTAL_PAN_RATIO));
+      colOffset += Math.sign(e.deltaY) * panStep;
+      clampColOffset();
+      renderSonar();
+      return;
+    }
+
+    if (zoomX > 1 && Math.abs(e.deltaX) > 0) {
+      const panStep = Math.max(1, getVisibleCols() / WHEEL_PAN_DIVISOR);
+      colOffset += e.deltaX * panStep;
+      clampColOffset();
+      renderSonar();
+      return;
+    }
+
+    const delta = Math.sign(e.deltaY) * Math.max(SCROLL_STEP_MIN, Math.floor(viewHeight * SCROLL_STEP_RATIO));
+    const maxScroll = sonarData.totalRows - viewHeight;
+    scrollTop = Math.max(0, Math.min(maxScroll, scrollTop + delta));
+    refreshSonarView();
+  }, { passive: false });
+}
+
+// ========== ANNOTATION RENDERING ==========
+// All polygon coordinates are stored in RAW DATA space (row = data row index, col = data column index).
+// When rendering to the display canvas, cols are scaled using current view width.
+function renderAnnotations() {
+  const canvas = ui.annotationCanvas;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw completed annotations
+  for (const ann of annotations) {
+    const color = getLabelColor(ann.label);
+    drawPolygonOnCanvas(ctx, ann.polygon, color, ann === selectedAnnotation);
+  }
+
+  // Draw in-progress freehand stroke
+  if (currentPolygon.length > 1) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    for (let i = 0; i < currentPolygon.length; i++) {
+      const [row, col] = currentPolygon[i];
+      const y = row - scrollTop;
+      const x = dataColToDisplay(col);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+}
+
+function drawPolygonOnCanvas(ctx, polygon, color, isSelected) {
+  if (polygon.length < 2) return;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = isSelected ? 3 : 2;
+  ctx.setLineDash(isSelected ? [8, 4] : []);
+  ctx.beginPath();
+  for (let i = 0; i < polygon.length; i++) {
+    const [row, col] = polygon[i];
+    const y = row - scrollTop;
+    const x = dataColToDisplay(col);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw vertices
+  for (const [row, col] of polygon) {
+    const y = row - scrollTop;
+    const x = dataColToDisplay(col);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function getLabelColor(label) {
+  const lc = labelClasses.find(l => l.name === label);
+  return lc ? lc.color : '#888888';
+}
+
+// ========== POLYGON DRAWING ==========
+let selectedAnnotation = null;
+let isDrawingStroke = false; // true while mouse is held down during freehand draw
+const MIN_POINT_DIST = 1; // minimum pixel distance between freehand points (in data space)
+
+function canvasEventToDataCoords(e, aCanvas) {
+  const rect = aCanvas.getBoundingClientRect();
+  const scaleX = aCanvas.width / rect.width;
+  const scaleY = aCanvas.height / rect.height;
+  const displayCol = (e.clientX - rect.left) * scaleX;
+  const col = Math.round(displayColToData(displayCol));
+  const row = scrollTop + Math.round((e.clientY - rect.top) * scaleY);
+  return [row, col];
+}
+
+function simplifyPolygon(points, tolerance) {
+  // Douglas-Peucker simplification to reduce freehand point count
+  if (points.length <= 3) return points;
+  const sqDist = (p, a, b) => {
+    let dx = b[1] - a[1], dy = b[0] - a[0];
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) { dx = p[1] - a[1]; dy = p[0] - a[0]; return dx * dx + dy * dy; }
+    let t = ((p[1] - a[1]) * dx + (p[0] - a[0]) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    dx = p[1] - (a[1] + t * dx); dy = p[0] - (a[0] + t * dy);
+    return dx * dx + dy * dy;
+  };
+  const tolSq = tolerance * tolerance;
+  function rdp(pts, start, end) {
+    let maxDist = 0, idx = start;
+    for (let i = start + 1; i < end; i++) {
+      const d = sqDist(pts[i], pts[start], pts[end]);
+      if (d > maxDist) { maxDist = d; idx = i; }
+    }
+    if (maxDist > tolSq) {
+      const left = rdp(pts, start, idx);
+      const right = rdp(pts, idx, end);
+      return left.slice(0, -1).concat(right);
+    }
+    return [pts[start], pts[end]];
+  }
+  return rdp(points, 0, points.length - 1);
+}
+
+function initDrawing() {
+  const aCanvas = ui.annotationCanvas;
+
+  // --- Freehand drawing: mousedown starts, mousemove adds points, mouseup closes ---
+  aCanvas.addEventListener('mousedown', (e) => {
+    if (!sonarData || !drawingMode) return;
+    if (e.button !== 0) return; // left button only
+    e.preventDefault();
+    isDrawingStroke = true;
+    currentPolygon = [canvasEventToDataCoords(e, aCanvas)];
+    renderAnnotations();
+  });
+
+  aCanvas.addEventListener('mousemove', (e) => {
+    if (!isDrawingStroke) return;
+    const [row, col] = canvasEventToDataCoords(e, aCanvas);
+    const last = currentPolygon[currentPolygon.length - 1];
+    const dx = col - last[1], dy = row - last[0];
+    if (dx * dx + dy * dy >= MIN_POINT_DIST * MIN_POINT_DIST) {
+      currentPolygon.push([row, col]);
+      renderAnnotations();
+    }
+  });
+
+  const finishStroke = () => {
+    if (!isDrawingStroke) return;
+    isDrawingStroke = false;
+    if (currentPolygon.length >= 3) {
+      // Simplify to reduce noise from freehand
+      const simplified = simplifyPolygon(currentPolygon, 1.0);
+      const ann = {
+        id: nextAnnotationId++,
+        label: selectedLabel,
+        polygon: simplified,
+        timestamp: new Date().toISOString(),
+      };
+      annotations.push(ann);
+      saveAnnotations();
+    }
+    currentPolygon = [];
+    renderAnnotations();
+  };
+
+  aCanvas.addEventListener('mouseup', finishStroke);
+  aCanvas.addEventListener('mouseleave', finishStroke);
+
+  // --- Click to select/label annotation (when NOT in draw mode) ---
+  aCanvas.addEventListener('click', (e) => {
+    if (!sonarData || drawingMode) return;
+    const [row, col] = canvasEventToDataCoords(e, aCanvas);
+
+    if (deleteMode) {
+      const hit = hitTestAnnotation(col, row);
+      if (hit) {
+        annotations = annotations.filter(a => a !== hit);
+        if (selectedAnnotation === hit) selectedAnnotation = null;
+        renderAnnotations();
+        saveAnnotations();
+      }
+      return;
+    }
+
+    const hit = hitTestAnnotation(col, row);
+    if (hit) {
+      selectedAnnotation = hit;
+      showContextMenu(e.clientX, e.clientY, hit);
+    } else {
+      selectedAnnotation = null;
+    }
+    renderAnnotations();
+  });
+
+  aCanvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+  });
+}
+
+function hitTestAnnotation(col, row) {
+  // Point-in-polygon test for each annotation
+  for (let i = annotations.length - 1; i >= 0; i--) {
+    if (pointInPolygon(col, row, annotations[i].polygon)) {
+      return annotations[i];
+    }
+  }
+  return null;
+}
+
+function pointInPolygon(x, y, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [yi, xi] = polygon[i];
+    const [yj, xj] = polygon[j];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// ========== CONTEXT MENU ==========
+function showContextMenu(x, y, annotation) {
+  const menu = ui.contextMenu;
+  menu.innerHTML = '';
+
+  for (const lc of labelClasses) {
+    const div = document.createElement('div');
+    div.textContent = (annotation.label === lc.name ? '● ' : '  ') + lc.name;
+    div.style.color = lc.color;
+    div.addEventListener('click', () => {
+      annotation.label = lc.name;
+      hideContextMenu();
+      renderAnnotations();
+      saveAnnotations();
+    });
+    menu.appendChild(div);
+  }
+
+  const delDiv = document.createElement('div');
+  delDiv.textContent = 'Delete';
+  delDiv.className = 'delete-option';
+  delDiv.addEventListener('click', () => {
+    annotations = annotations.filter(a => a !== annotation);
+    if (selectedAnnotation === annotation) selectedAnnotation = null;
+    hideContextMenu();
+    renderAnnotations();
+    saveAnnotations();
+  });
+  menu.appendChild(delDiv);
+
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.style.display = 'block';
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', hideContextMenu, { once: true });
+  }, 10);
+}
+
+function hideContextMenu() {
+  ui.contextMenu.style.display = 'none';
+}
+
+// ========== LABEL MANAGEMENT ==========
+function renderLabelPanel() {
+  const panel = ui.labelPanel;
+  panel.innerHTML = '<span style="color:#7a7aa0;">Drawing as:</span>';
+
+  for (const lc of labelClasses) {
+    const isSelected = selectedLabel === lc.name;
+    const btn = document.createElement('button');
+    btn.className = 'label-btn' + (isSelected ? ' selected' : '');
+    btn.textContent = lc.name;
+    btn.style.borderColor = lc.color;
+    btn.style.color = lc.color;
+    if (isSelected) {
+      btn.style.background = lc.color + SELECTED_LABEL_BG_ALPHA;
+    }
+    btn.addEventListener('click', () => {
+      selectedLabel = lc.name;
+      renderLabelPanel();
+    });
+    panel.appendChild(btn);
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'label-btn';
+  addBtn.textContent = '+ Add';
+  addBtn.style.borderColor = '#555';
+  addBtn.style.opacity = '0.5';
+  addBtn.addEventListener('click', showNewLabelDialog);
+  panel.appendChild(addBtn);
+}
+
+function showNewLabelDialog() {
+  ui.newLabelDialog.style.display = 'block';
+  ui.overlayBg.style.display = 'block';
+  ui.newLabelName.value = '';
+  ui.newLabelName.focus();
+}
+
+function hideNewLabelDialog() {
+  ui.newLabelDialog.style.display = 'none';
+  ui.overlayBg.style.display = 'none';
+}
+
+// ========== ANNOTATION PERSISTENCE ==========
+async function saveAnnotations() {
+  const normalized = annotations.map(normalizeAnnotationObject).filter(Boolean);
+  annotations = normalized;
+  const jsonl = normalized.map(a => JSON.stringify(a)).join('\n');
+
+  // Try File System Access API
+  if (fileHandle) {
+    try {
+      const writable = await fileHandle.createWritable();
+      await writable.write(jsonl);
+      await writable.close();
+      return;
+    } catch (e) {
+      console.warn('File write failed:', e);
+    }
+  }
+
+  // Fallback: save to localStorage
+  try {
+    localStorage.setItem('sonarlabel_annotations', jsonl);
+  } catch (e) {}
+}
+
+async function setupSaveFile() {
+  if (!('showSaveFilePicker' in window)) {
+    alert('File System Access API not supported. Use the Download button to save annotations.');
+    return;
+  }
+  try {
+    fileHandle = await window.showSaveFilePicker({
+      suggestedName: 'annotations.jsonl',
+      types: [{ description: 'JSONL', accept: { 'application/jsonl': ['.jsonl'] } }],
+    });
+    setStatus('Auto-saving to file');
+    saveAnnotations();
+  } catch (e) {
+    // User cancelled
+  }
+}
+
+function downloadAnnotations() {
+  const normalized = annotations.map(normalizeAnnotationObject).filter(Boolean);
+  annotations = normalized;
+  const data = normalized.map(a => JSON.stringify(a)).join('\n');
+
+  const blob = new Blob([data], { type: 'application/jsonl' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'annotations.jsonl';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function loadAnnotations(file) {
+  const text = await file.text();
+  const raw = parseAnnotationText(text);
+  if (!text.trim() || raw.length === 0) {
+    alert('Invalid or empty JSONL file. Expected one JSON annotation object per line.');
+    return;
+  }
+  annotations = raw.map(normalizeAnnotationObject).filter(Boolean);
+  ensureLoadedLabelsExist();
+  renderLabelPanel();
+
+  renderAnnotations();
+  if (sonarData) {
+    setStatus(`Loaded ${annotations.length} annotations (overlayed on current sidescan)`);
+  } else {
+    setStatus(`Loaded ${annotations.length} annotations (load sonar file to view overlay)`);
+  }
+}
+
+// ========== KEYBOARD SHORTCUTS ==========
+function initKeyboard() {
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+
+    if (e.key === 'd' || e.key === 'D') {
+      toggleDrawingMode();
+    } else if (e.key === 'x' || e.key === 'X') {
+      toggleDeleteMode();
+    } else if (e.key === 'r' || e.key === 'R') {
+      resetView();
+    } else if (e.key === 'Escape') {
+      if (drawingMode) toggleDrawingMode();
+      if (deleteMode) toggleDeleteMode();
+      hideContextMenu();
+    }
+  });
+}
+
+function toggleDrawingMode() {
+  drawingMode = !drawingMode;
+  if (drawingMode) deleteMode = false;
+  currentPolygon = [];
+  isDrawingStroke = false;
+  ui.btnDraw.classList.toggle('active', drawingMode);
+  ui.btnDeleteMode.classList.toggle('active', false);
+  ui.sonarContainer.classList.toggle('drawing', drawingMode);
+  renderAnnotations();
+}
+
+function toggleDeleteMode() {
+  deleteMode = !deleteMode;
+  if (deleteMode) { drawingMode = false; currentPolygon = []; }
+  ui.btnDeleteMode.classList.toggle('active', deleteMode);
+  ui.btnDraw.classList.toggle('active', false);
+  ui.sonarContainer.classList.toggle('drawing', deleteMode);
+  renderAnnotations();
+}
+
+// ========== RESIZE HANDLING ==========
+function updateViewSize() {
+  viewWidth = parseInt(ui.viewWidthInput.value) || 800;
+  viewHeight = parseInt(ui.viewHeightInput.value) || 600;
+  lastMouseDisplayX = Math.max(0, Math.min(viewWidth, lastMouseDisplayX));
+  const container = ui.sonarContainer;
+  container.style.width = viewWidth + 'px';
+  container.style.height = viewHeight + 'px';
+
+  // Force map to re-layout after height change
+  setTimeout(() => map.invalidateSize(), 0);
+
+  if (sonarData) {
+    const maxScroll = Math.max(0, sonarData.totalRows - viewHeight);
+    scrollTop = Math.min(scrollTop, maxScroll);
+    refreshSonarView();
+  }
+}
+
+// ========== INIT ==========
+function init() {
+  bindUIRefs();
+  ui.appVersion.textContent = `SonarLabel version ${VERSION}`;
+  initMap();
+  initScrollbar();
+  initScrollWheel();
+  initDrawing();
+  initKeyboard();
+  renderLabelPanel();
+
+  // Set initial container height
+  updateViewSize();
+
+  // File input
+  ui.fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    sonarData = await parseSL3(file);
+    if (!sonarData) return;
+
+    scrollTop = 0;
+    resetView();
+    setStatus(`${sonarData.totalRows} sidescan frames | ${sonarData.width}px wide | ${sonarData.frameCount} total frames`);
+    ui.mapInfo.textContent = `v${sonarData.version} | Device: ${sonarData.deviceId} | ${sonarData.totalRows} pings`;
+
+    updateMap();
+    renderSonar();
+  });
+
+  // View height
+  ui.viewWidthInput.addEventListener('change', updateViewSize);
+  ui.viewHeightInput.addEventListener('change', updateViewSize);
+  ui.paletteSelect.addEventListener('change', (e) => {
+    currentPalette = e.target.value;
+    if (sonarData) renderSonar();
+  });
+  ui.zoomInput.addEventListener('input', (e) => {
+    setZoomAtDisplayX(parseFloat(e.target.value || '1'), lastMouseDisplayX);
+    renderSonar();
+  });
+  ui.btnResetView.addEventListener('click', resetView);
+
+  // Save/Load
+  ui.btnSaveAnnotations.addEventListener('click', setupSaveFile);
+  ui.btnDownload.addEventListener('click', downloadAnnotations);
+  ui.loadAnnotationsInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) loadAnnotations(e.target.files[0]);
+  });
+
+  // Draw/Delete buttons
+  ui.btnDraw.addEventListener('click', toggleDrawingMode);
+  ui.btnDeleteMode.addEventListener('click', toggleDeleteMode);
+
+  // New label dialog
+  ui.newLabelCancel.addEventListener('click', hideNewLabelDialog);
+  ui.overlayBg.addEventListener('click', hideNewLabelDialog);
+  ui.newLabelOk.addEventListener('click', () => {
+    const name = ui.newLabelName.value.trim();
+    const color = ui.newLabelColor.value;
+    if (name && !labelClasses.find(l => l.name === name)) {
+      labelClasses.push({ name, color });
+      selectedLabel = name;
+      renderLabelPanel();
+      hideNewLabelDialog();
+      saveAnnotations();
+    }
+  });
+  ui.newLabelName.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') ui.newLabelOk.click();
+  });
+
+  // Window resize
+  window.addEventListener('resize', () => {
+    if (sonarData) {
+      renderSonar();
+      map.invalidateSize();
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
