@@ -54,7 +54,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #label-panel .label-btn.selected { opacity: 1; font-weight: bold; box-shadow: 0 0 6px currentColor; }
 
 /* Hints bar */
-#hints-bar { display: flex; gap: 16px; flex-wrap: wrap; padding: 4px 10px; background: #0d1b36; border-top: 1px solid #0f3460; font-size: 11px; color: #5a5a7a; }
+#hints-bar { display: flex; gap: 16px; flex-wrap: wrap; padding: 4px 10px; background: #0d1b36; border: 1px solid #0f3460; border-radius: 4px; margin-bottom: 6px; font-size: 11px; color: #5a5a7a; }
 #hints-bar b { color: #8888a0; }
 
 #sonar-area { border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
@@ -117,6 +117,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </div>
   <div id="sonar-panel">
     <div id="depth-info">Depth: --</div>
+    <div id="hints-bar">
+      <span>🖱 <b>Scroll</b> — pan vertically</span>
+      <span>⇧ <b>Shift+Scroll</b> — pan horizontally</span>
+      <span>⌥ <b>Alt+Scroll</b> — zoom at cursor</span>
+      <span><b>D</b> — draw &nbsp;|&nbsp; <b>X</b> — delete &nbsp;|&nbsp; <b>N</b> — normalize &nbsp;|&nbsp; <b>R</b> — reset view</span>
+    </div>
     <div id="sonar-area">
       <div id="sonar-container">
         <canvas id="sonar-canvas"></canvas>
@@ -135,12 +141,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </div>
     <div id="label-panel">
       <span style="color:#7a7aa0;">Labels:</span>
-    </div>
-    <div id="hints-bar">
-      <span>🖱 <b>Scroll</b> — pan vertically</span>
-      <span>⇧ <b>Shift+Scroll</b> — pan horizontally</span>
-      <span>⌥ <b>Alt+Scroll</b> — zoom at cursor</span>
-      <span><b>D</b> — draw &nbsp;|&nbsp; <b>X</b> — delete &nbsp;|&nbsp; <b>R</b> — reset view</span>
     </div>
   </div>
 </div>
