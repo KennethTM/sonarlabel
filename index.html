@@ -102,6 +102,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <option value="gray">Gray</option>
     </select>
   </label>
+  <button id="btn-normalize" title="Toggle column-mean normalization for visible view (N)">Normalize (N)</button>
   <div class="sep"></div>
   <button id="btn-download" type="button">Save Annotations</button>
   <label>Load Annotations: <input type="file" id="load-annotations" accept=".jsonl"></label>
@@ -179,6 +180,7 @@ const SCROLL_STEP_MIN = 10;
 const WHEEL_PAN_DIVISOR = 500;
 const SCROLLBAR_MIN_THUMB_HEIGHT = 20;
 const SELECTED_LABEL_BG_ALPHA = '30';
+const NORMALIZATION_GAIN = 1.8;
 
 // ========== SONAR COLOR PALETTE ==========
 function buildPaletteFromStops(stops) {
@@ -262,6 +264,7 @@ let nextAnnotationId = 1;
 let map, trackLine, highlightLine, trackPoints;
 let isDraggingScrollbar = false;
 let currentPalette = 'sonarlight';
+let normalizeColumns = false;
 let zoomX = 1;
 let colOffset = 0;
 let lastMouseDisplayX = viewWidth / 2;
@@ -287,6 +290,7 @@ function bindUIRefs() {
     viewWidthInput: document.getElementById('view-width'),
     viewHeightInput: document.getElementById('view-height'),
     paletteSelect: document.getElementById('palette-select'),
+    btnNormalize: document.getElementById('btn-normalize'),
     labelPanel: document.getElementById('label-panel'),
     fileInput: document.getElementById('file-input'),
     loadAnnotationsInput: document.getElementById('load-annotations'),
@@ -310,6 +314,12 @@ function setStatus(text) {
 function refreshSonarView() {
   renderSonar();
   updateMapHighlight();
+}
+
+function toggleNormalization() {
+  normalizeColumns = !normalizeColumns;
+  if (ui.btnNormalize) ui.btnNormalize.classList.toggle('active', normalizeColumns);
+  if (sonarData) renderSonar();
 }
 
 function normalizePolygonPoint(point) {
@@ -655,17 +665,47 @@ function renderSonar() {
   clampColOffset();
   const visibleCols = getVisibleCols();
 
-  // Scale data width -> display width with nearest-neighbor sampling + palette
-  for (let row = 0; row < h; row++) {
-    const echoRowOffset = (scrollTop + row) * dataW;
-    for (let col = 0; col < dw; col++) {
-      const srcCol = Math.min(dataW - 1, Math.floor(colOffset + (col * visibleCols / dw)));
-      const val = sonarData.echoData[echoRowOffset + srcCol];
-      const idx = (row * dw + col) * 4;
-      pixels[idx] = palette[val * 3];
-      pixels[idx + 1] = palette[val * 3 + 1];
-      pixels[idx + 2] = palette[val * 3 + 2];
-      pixels[idx + 3] = 255;
+  if (normalizeColumns) {
+    const sampledValues = new Uint8Array(dw * h);
+    const columnSums = new Float64Array(dw);
+
+    for (let row = 0; row < h; row++) {
+      const echoRowOffset = (scrollTop + row) * dataW;
+      for (let col = 0; col < dw; col++) {
+        const srcCol = Math.min(dataW - 1, Math.floor(colOffset + (col * visibleCols / dw)));
+        const val = sonarData.echoData[echoRowOffset + srcCol];
+        sampledValues[row * dw + col] = val;
+        columnSums[col] += val;
+      }
+    }
+
+    for (let row = 0; row < h; row++) {
+      const rowOffset = row * dw;
+      for (let col = 0; col < dw; col++) {
+        const mean = columnSums[col] / h;
+        const centered = (sampledValues[rowOffset + col] - mean) * NORMALIZATION_GAIN + 128;
+        const normalized = Math.max(0, Math.min(255, Math.round(centered)));
+        const idx = (rowOffset + col) * 4;
+        pixels[idx] = palette[normalized * 3];
+        pixels[idx + 1] = palette[normalized * 3 + 1];
+        pixels[idx + 2] = palette[normalized * 3 + 2];
+        pixels[idx + 3] = 255;
+      }
+    }
+  } else {
+
+    // Scale data width -> display width with nearest-neighbor sampling + palette
+    for (let row = 0; row < h; row++) {
+      const echoRowOffset = (scrollTop + row) * dataW;
+      for (let col = 0; col < dw; col++) {
+        const srcCol = Math.min(dataW - 1, Math.floor(colOffset + (col * visibleCols / dw)));
+        const val = sonarData.echoData[echoRowOffset + srcCol];
+        const idx = (row * dw + col) * 4;
+        pixels[idx] = palette[val * 3];
+        pixels[idx + 1] = palette[val * 3 + 1];
+        pixels[idx + 2] = palette[val * 3 + 2];
+        pixels[idx + 3] = 255;
+      }
     }
   }
 
@@ -699,7 +739,7 @@ function updateDepthInfo() {
   const colStart = Math.round(colOffset);
   const colEnd = Math.round(Math.min(sonarData.width, colOffset + getVisibleCols()));
   ui.depthInfo.textContent =
-    `Row: ${scrollTop}-${Math.min(scrollTop + viewHeight, sonarData.totalRows)} / ${sonarData.totalRows} | Col: ${colStart}-${colEnd} / ${sonarData.width} | Zoom: ${zoomX.toFixed(2)}x | Depth: ${f.depth.toFixed(1)}m`;
+    `Row: ${scrollTop}-${Math.min(scrollTop + viewHeight, sonarData.totalRows)} / ${sonarData.totalRows} | Col: ${colStart}-${colEnd} / ${sonarData.width} | Zoom: ${zoomX.toFixed(2)}x | Norm: ${normalizeColumns ? 'On' : 'Off'} | Depth: ${f.depth.toFixed(1)}m`;
 }
 
 // ========== SCROLLBAR (VERTICAL) ==========
@@ -1151,6 +1191,8 @@ function initKeyboard() {
       toggleDrawingMode();
     } else if (e.key === 'x' || e.key === 'X') {
       toggleDeleteMode();
+    } else if (e.key === 'n' || e.key === 'N') {
+      toggleNormalization();
     } else if (e.key === 'r' || e.key === 'R') {
       resetView();
     } else if (e.key === 'Escape') {
@@ -1238,6 +1280,7 @@ function init() {
     currentPalette = e.target.value;
     if (sonarData) renderSonar();
   });
+  ui.btnNormalize.addEventListener('click', toggleNormalization);
   ui.zoomInput.addEventListener('input', (e) => {
     setZoomAtDisplayX(parseFloat(e.target.value || '1'), lastMouseDisplayX);
     renderSonar();
