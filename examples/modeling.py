@@ -17,7 +17,7 @@ import segmentation_models_pytorch as smp
 
 # Paths
 labels_path = "annotations_many.jsonl"
-sonar_path  = "/media/kenneth/d6c13395-8492-49ee-9c0f-6a165e34c95c/sonar_project/data/Bromme 01.sl3"
+sonar_path  = "Bromme 01.sl3"
 
 # Data / dataset
 patch_size  = 512   # model input resolution (pixels)

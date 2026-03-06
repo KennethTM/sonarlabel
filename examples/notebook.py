@@ -82,7 +82,7 @@ def compute_metric_extent(df, shape):
 
 # %%
 # Load sonar data
-sonar_path = "/media/kenneth/d6c13395-8492-49ee-9c0f-6a165e34c95c/sonar_project/data/Bromme 01.sl3"
+sonar_path = "Bromme 01.sl3"
 sonar = Sonar(sonar_path, clean=False)
 
 # %%
