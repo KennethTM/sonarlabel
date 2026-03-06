@@ -5,7 +5,10 @@ description = "SonarLabel tooling for SL3 parser parity and simple annotation pl
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "folium>=0.20.0",
+  "matplotlib>=3.10.8",
   "numpy>=1.24",
+  "pandas>=2.3.3",
   "pillow>=10.0",
   "sonarlight>=0.1.7",
 ]
