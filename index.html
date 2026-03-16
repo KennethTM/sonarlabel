@@ -22,17 +22,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #toolbar .sep { width: 1px; height: 24px; background: #0f3460; }
 #status { font-size: 12px; color: #7a7aa0; margin-left: auto; }
 
-/* Main layout */
-#main { display: flex; overflow: auto; padding: 8px; gap: 8px; align-items: stretch; }
-#map-panel { width: 33.3%; min-width: 250px; display: flex; flex-direction: column; border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
+/* Main layout — see responsive styles below */
 #map { flex: 1; min-height: 0; }
 #map-info { padding: 6px 10px; background: #16213e; font-size: 12px; color: #a0a0c0; border-top: 1px solid #0f3460; }
-
-#sonar-panel { display: flex; flex-direction: column; position: relative; }
-#sonar-area { display: flex; flex-direction: row; }
-#sonar-container { overflow: hidden; position: relative; cursor: crosshair; }
-#sonar-canvas { display: block; }
-#annotation-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+#sonar-canvas { display: block; width: 100%; height: 100%; }
+#annotation-canvas { position: absolute; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%; }
 #sonar-container.drawing #annotation-canvas { pointer-events: auto; cursor: crosshair; }
 
 /* Vertical scrollbar */
@@ -48,19 +42,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #btn-reset-view { padding: 2px 6px; font-size: 11px; }
 
 /* Label panel */
-#label-panel { padding: 6px 10px; background: #16213e; border-top: 1px solid #0f3460; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+#label-panel { padding: 6px 10px; background: #16213e; border-top: 1px solid #0f3460; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; flex-shrink: 0; }
 #label-panel .label-btn { padding: 3px 10px; border-radius: 3px; cursor: pointer; border: 2px solid; background: transparent; font-size: 12px; color: #8888a0; opacity: 0.6; transition: all 0.15s; }
 #label-panel .label-btn:hover { opacity: 0.85; }
 #label-panel .label-btn.selected { opacity: 1; font-weight: bold; box-shadow: 0 0 6px currentColor; }
 
 /* Hints bar */
-#hints-bar { display: flex; gap: 16px; flex-wrap: wrap; padding: 4px 10px; background: #0d1b36; border: 1px solid #0f3460; border-radius: 4px; margin-bottom: 6px; font-size: 11px; color: #5a5a7a; }
+#hints-bar { display: flex; gap: 16px; flex-wrap: wrap; padding: 4px 10px; background: #0d1b36; border: 1px solid #0f3460; border-radius: 4px; margin: 4px 8px; font-size: 11px; color: #5a5a7a; flex-shrink: 0; }
 #hints-bar b { color: #8888a0; }
 
-#sonar-area { border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
-
-/* Depth info overlay */
-#depth-info { position: absolute; bottom: 42px; right: 24px; background: rgba(22,33,62,0.9); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #a0a0c0; pointer-events: none; z-index: 10; }
+/* Depth info overlay — positioned inside sonar-container */
+#depth-info { position: absolute; bottom: 8px; left: 8px; background: rgba(22,33,62,0.9); padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #a0a0c0; pointer-events: none; z-index: 10; }
 
 /* Context menu for polygon labels */
 #context-menu { position: fixed; background: #16213e; border: 1px solid #0f3460; border-radius: 4px; padding: 4px 0; z-index: 1000; display: none; min-width: 120px; }
@@ -80,6 +72,32 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #new-label-dialog input { padding: 6px 10px; background: #0d1b36; color: #e0e0e0; border: 1px solid #1a5276; border-radius: 4px; font-size: 14px; }
 #new-label-dialog .dialog-btns { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
 .overlay-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1999; display: none; }
+
+/* Responsive layout */
+#main { flex: 1; display: flex; overflow: hidden; padding: 0; gap: 0; align-items: stretch; }
+#map-panel { width: 280px; min-width: 180px; max-width: 50%; display: flex; flex-direction: column; border-right: 1px solid #0f3460; }
+#resize-handle { width: 5px; cursor: col-resize; background: #0f3460; flex-shrink: 0; transition: background 0.15s; }
+#resize-handle:hover, #resize-handle.dragging { background: #e94560; }
+#sonar-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+#sonar-area { flex: 1; display: flex; flex-direction: row; border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; margin: 0 8px; }
+#sonar-container { flex: 1; min-width: 0; overflow: hidden; position: relative; cursor: crosshair; }
+
+/* Annotation list sidebar */
+#annotation-list-panel { width: 220px; min-width: 160px; background: #0d1b36; border-left: 1px solid #0f3460; display: flex; flex-direction: column; overflow: hidden; }
+#annotation-list-header { padding: 6px 10px; background: #16213e; border-bottom: 1px solid #0f3460; font-size: 12px; color: #a0a0c0; display: flex; justify-content: space-between; align-items: center; }
+#annotation-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.ann-item { padding: 5px 10px; font-size: 11px; cursor: pointer; border-left: 3px solid transparent; display: flex; justify-content: space-between; align-items: center; }
+.ann-item:hover { background: #16213e; }
+.ann-item.selected { background: #1a2744; }
+.ann-item .ann-label { font-weight: bold; }
+.ann-item .ann-info { color: #5a5a7a; font-size: 10px; }
+.ann-item .ann-del { color: #e94560; opacity: 0; cursor: pointer; padding: 0 4px; font-size: 13px; }
+.ann-item:hover .ann-del { opacity: 0.7; }
+.ann-item .ann-del:hover { opacity: 1; }
+
+/* Brightness/contrast controls in toolbar */
+#toolbar input[type="range"] { width: 70px; vertical-align: middle; }
+#toolbar .bc-label { font-size: 11px; color: #7a7aa0; min-width: 18px; display: inline-block; text-align: right; }
 </style>
 </head>
 <body>
@@ -90,8 +108,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <button id="btn-draw" title="Draw polygon (D)">Draw (D)</button>
   <button id="btn-delete-mode" title="Delete mode (X)">Delete (X)</button>
   <div class="sep"></div>
-  <label>Width: <input type="number" id="view-width" value="800" min="300" max="3000" step="50"></label>
-  <label>Height: <input type="number" id="view-height" value="600" min="200" max="2000" step="50"></label>
   <label>Palette:
     <select id="palette-select">
       <option value="sonarlight">Default</option>
@@ -104,6 +120,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </label>
   <button id="btn-normalize" title="Toggle column-mean normalization for visible view (N)">Normalize (N)</button>
   <div class="sep"></div>
+  <label><span class="bc-label">B</span> <input type="range" id="brightness-slider" min="-100" max="100" value="0" title="Brightness"></label>
+  <label><span class="bc-label">C</span> <input type="range" id="contrast-slider" min="-100" max="100" value="0" title="Contrast"></label>
+  <div class="sep"></div>
   <button id="btn-download" type="button">Save Annotations</button>
   <label>Load Annotations: <input type="file" id="load-annotations" accept=".jsonl"></label>
   <span id="app-version" style="font-size:12px; color:#7a7aa0;">SonarLabel version 1.0.0</span>
@@ -115,19 +134,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div id="map"></div>
     <div id="map-info">No data loaded</div>
   </div>
+  <div id="resize-handle"></div>
   <div id="sonar-panel">
-    <div id="depth-info">Depth: --</div>
     <div id="hints-bar">
       <span>🖱 <b>Scroll</b> — pan vertically</span>
       <span>⇧ <b>Shift+Scroll</b> — pan horizontally</span>
       <span>⌥ <b>Alt+Scroll</b> — zoom XY &nbsp;|&nbsp; <b>+Shift</b> X only &nbsp;|&nbsp; <b>+Ctrl</b> Y only</span>
       <span><b>Ctrl+Drag</b> — box zoom</span>
-      <span><b>D</b> draw &nbsp;|&nbsp; <b>X</b> delete &nbsp;|&nbsp; <b>N</b> normalize &nbsp;|&nbsp; <b>R</b> reset &nbsp;|&nbsp; <b>L</b> lock zoom &nbsp;|&nbsp; <b>P</b> phys. AR</span>
+      <span><b>D</b> draw &nbsp;|&nbsp; <b>X</b> delete &nbsp;|&nbsp; <b>N</b> normalize &nbsp;|&nbsp; <b>R</b> reset &nbsp;|&nbsp; <b>L</b> lock &nbsp;|&nbsp; <b>P</b> AR &nbsp;|&nbsp; <b>Ctrl+Z</b> undo</span>
     </div>
     <div id="sonar-area">
       <div id="sonar-container">
         <canvas id="sonar-canvas"></canvas>
         <canvas id="annotation-canvas"></canvas>
+        <div id="depth-info">Depth: --</div>
       </div>
       <div id="sonar-scrollbar">
         <div id="scrollbar-track">
@@ -147,6 +167,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div id="label-panel">
       <span style="color:#7a7aa0;">Labels:</span>
     </div>
+  </div>
+  <div id="annotation-list-panel">
+    <div id="annotation-list-header">
+      <span>Annotations</span>
+      <span id="annotation-count">0</span>
+    </div>
+    <div id="annotation-list"></div>
   </div>
 </div>
 
@@ -276,6 +303,11 @@ let colOffset = 0;
 let lastMouseDisplayX = viewWidth / 2;
 let zoomLocked = false;
 let physicalAR = false;
+let brightness = 0;
+let contrast = 0;
+let undoStack = [];
+let redoStack = [];
+const MAX_UNDO = 50;
 let ui = {};
 
 function bindUIRefs() {
@@ -299,8 +331,6 @@ function bindUIRefs() {
     zoomYLabel: document.getElementById('zoom-y-label'),
     btnLockZoom: document.getElementById('btn-lock-zoom'),
     btnPhysicalAR: document.getElementById('btn-physical-ar'),
-    viewWidthInput: document.getElementById('view-width'),
-    viewHeightInput: document.getElementById('view-height'),
     paletteSelect: document.getElementById('palette-select'),
     btnNormalize: document.getElementById('btn-normalize'),
     labelPanel: document.getElementById('label-panel'),
@@ -316,11 +346,151 @@ function bindUIRefs() {
     newLabelColor: document.getElementById('new-label-color'),
     newLabelCancel: document.getElementById('new-label-cancel'),
     newLabelOk: document.getElementById('new-label-ok'),
+    annotationList: document.getElementById('annotation-list'),
+    annotationCount: document.getElementById('annotation-count'),
+    resizeHandle: document.getElementById('resize-handle'),
+    mapPanel: document.getElementById('map-panel'),
+    main: document.getElementById('main'),
+    brightnessSlider: document.getElementById('brightness-slider'),
+    contrastSlider: document.getElementById('contrast-slider'),
   };
 }
 
 function setStatus(text) {
   if (ui.status) ui.status.textContent = text;
+}
+
+// ========== UNDO/REDO ==========
+function pushUndo() {
+  undoStack.push(JSON.stringify(annotations.map(a => ({ id: a.id, label: a.label, polygon: a.polygon, timestamp: a.timestamp }))));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack = [];
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  redoStack.push(JSON.stringify(annotations.map(a => ({ id: a.id, label: a.label, polygon: a.polygon, timestamp: a.timestamp }))));
+  const prev = JSON.parse(undoStack.pop());
+  const prevSelectedId = selectedAnnotation ? selectedAnnotation.id : null;
+  annotations = prev.map(normalizeAnnotationObject).filter(Boolean);
+  selectedAnnotation = prevSelectedId ? (annotations.find(a => a.id === prevSelectedId) || null) : null;
+  saveAnnotations();
+  renderAnnotations();
+  renderAnnotationList();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  undoStack.push(JSON.stringify(annotations.map(a => ({ id: a.id, label: a.label, polygon: a.polygon, timestamp: a.timestamp }))));
+  const next = JSON.parse(redoStack.pop());
+  const prevSelectedId = selectedAnnotation ? selectedAnnotation.id : null;
+  annotations = next.map(normalizeAnnotationObject).filter(Boolean);
+  selectedAnnotation = prevSelectedId ? (annotations.find(a => a.id === prevSelectedId) || null) : null;
+  saveAnnotations();
+  renderAnnotations();
+  renderAnnotationList();
+}
+
+// ========== ANNOTATION LIST ==========
+function renderAnnotationList() {
+  if (!ui.annotationList) return;
+  const list = ui.annotationList;
+  list.innerHTML = '';
+  if (ui.annotationCount) ui.annotationCount.textContent = annotations.length;
+
+  for (const ann of annotations) {
+    const item = document.createElement('div');
+    item.className = 'ann-item' + (ann === selectedAnnotation ? ' selected' : '');
+    item.style.borderLeftColor = getLabelColor(ann.label);
+
+    const left = document.createElement('div');
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'ann-label';
+    labelSpan.style.color = getLabelColor(ann.label);
+    labelSpan.textContent = ann.label;
+    const infoSpan = document.createElement('span');
+    infoSpan.className = 'ann-info';
+    infoSpan.textContent = ` #${ann.id} row ${ann.polygon[0][0]}`;
+    left.appendChild(labelSpan);
+    left.appendChild(infoSpan);
+
+    const del = document.createElement('span');
+    del.className = 'ann-del';
+    del.textContent = '\u00d7';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pushUndo();
+      annotations = annotations.filter(a => a !== ann);
+      if (selectedAnnotation === ann) selectedAnnotation = null;
+      saveAnnotations();
+      renderAnnotations();
+      renderAnnotationList();
+    });
+
+    item.appendChild(left);
+    item.appendChild(del);
+    item.addEventListener('click', () => {
+      selectedAnnotation = ann;
+      zoomToAnnotation(ann);
+      renderAnnotationList();
+    });
+    list.appendChild(item);
+  }
+}
+
+// ========== RESPONSIVE RESIZE ==========
+function initResizeHandle() {
+  const handle = ui.resizeHandle;
+  const mapPanel = ui.mapPanel;
+  if (!handle || !mapPanel) return;
+
+  let startX, startWidth;
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = mapPanel.offsetWidth;
+    handle.classList.add('dragging');
+
+    const onMove = (e2) => {
+      const newWidth = Math.max(180, Math.min(window.innerWidth * 0.5, startWidth + (e2.clientX - startX)));
+      mapPanel.style.width = newWidth + 'px';
+      map.invalidateSize();
+      autoSizeCanvas();
+    };
+    const onUp = () => {
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function autoSizeCanvas() {
+  const container = ui.sonarContainer;
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  const newW = Math.floor(rect.width);
+  const newH = Math.floor(rect.height);
+  if (newW > 0 && newH > 0 && (newW !== viewWidth || newH !== viewHeight)) {
+    viewWidth = newW;
+    viewHeight = newH;
+    lastMouseDisplayX = Math.max(0, Math.min(viewWidth, lastMouseDisplayX));
+    clampRowOffset();
+    if (sonarData) refreshSonarView();
+  }
+}
+
+// ========== BRIGHTNESS / CONTRAST ==========
+function applyBrightnessContrast(val) {
+  // val is 0-255, returns 0-255 adjusted
+  const c = contrast / 100;  // -1 to 1
+  const b = brightness / 100; // -1 to 1
+  const factor = (1 + c);
+  let v = val / 255;
+  v = (v - 0.5) * factor + 0.5 + b;
+  return Math.max(0, Math.min(255, Math.round(v * 255)));
 }
 
 function refreshSonarView() {
@@ -386,15 +556,18 @@ function colorForLabelName(name) {
 
 function ensureLoadedLabelsExist() {
   const existing = new Set(labelClasses.map(l => l.name));
+  let added = false;
   for (const ann of annotations) {
     if (!existing.has(ann.label)) {
       labelClasses.push({ name: ann.label, color: colorForLabelName(ann.label) });
       existing.add(ann.label);
+      added = true;
     }
   }
   if (!existing.has(selectedLabel) && labelClasses.length > 0) {
     selectedLabel = labelClasses[0].name;
   }
+  if (added) saveLabelClasses();
 }
 
 function parseAnnotationText(text) {
@@ -769,7 +942,20 @@ function renderSonar() {
   const { canvas: offCanvas, ctx: offCtx } = getOffscreenCanvas(nCols, nRows);
   const imgData = offCtx.createImageData(nCols, nRows);
   const pixels = imgData.data;
-  const palette = PALETTES[currentPalette] || PALETTES.sonarlight;
+  const basePalette = PALETTES[currentPalette] || PALETTES.sonarlight;
+
+  // Build brightness/contrast adjusted palette LUT
+  const palette = new Uint8Array(256 * 3);
+  if (brightness !== 0 || contrast !== 0) {
+    for (let i = 0; i < 256; i++) {
+      const adj = applyBrightnessContrast(i);
+      palette[i * 3] = basePalette[adj * 3];
+      palette[i * 3 + 1] = basePalette[adj * 3 + 1];
+      palette[i * 3 + 2] = basePalette[adj * 3 + 2];
+    }
+  } else {
+    palette.set(basePalette);
+  }
 
   if (normalizeColumns) {
     // First pass: sample values and compute column sums
@@ -1064,6 +1250,22 @@ function renderAnnotations() {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Draw nadir line (center of sidescan = water column)
+  if (sonarData) {
+    const nadirCol = Math.floor(sonarData.width / 2);
+    const nadirX = dataColToDisplay(nadirCol);
+    if (nadirX >= 0 && nadirX <= viewWidth) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      ctx.moveTo(nadirX, 0);
+      ctx.lineTo(nadirX, viewHeight);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
   // Draw completed annotations
   for (const ann of annotations) {
     const color = getLabelColor(ann.label);
@@ -1106,9 +1308,6 @@ function renderAnnotations() {
 function drawPolygonOnCanvas(ctx, polygon, color, isSelected) {
   if (polygon.length < 2) return;
 
-  ctx.strokeStyle = color;
-  ctx.lineWidth = isSelected ? 3 : 2;
-  ctx.setLineDash(isSelected ? [8, 4] : []);
   ctx.beginPath();
   for (let i = 0; i < polygon.length; i++) {
     const [row, col] = polygon[i];
@@ -1118,6 +1317,15 @@ function drawPolygonOnCanvas(ctx, polygon, color, isSelected) {
     else ctx.lineTo(x, y);
   }
   ctx.closePath();
+
+  // Semi-transparent fill
+  ctx.fillStyle = color + (isSelected ? '40' : '20');
+  ctx.fill();
+
+  // Stroke
+  ctx.strokeStyle = color;
+  ctx.lineWidth = isSelected ? 3 : 2;
+  ctx.setLineDash(isSelected ? [8, 4] : []);
   ctx.stroke();
   ctx.setLineDash([]);
 }
@@ -1203,7 +1411,7 @@ function initDrawing() {
     if (!isDrawingStroke) return;
     isDrawingStroke = false;
     if (currentPolygon.length >= 3) {
-      // Simplify to reduce noise from freehand
+      pushUndo();
       const simplified = simplifyPolygon(currentPolygon, 1.0);
       const ann = {
         id: nextAnnotationId++,
@@ -1213,6 +1421,8 @@ function initDrawing() {
       };
       annotations.push(ann);
       saveAnnotations();
+      renderAnnotationList();
+      renderLabelPanel();
     }
     currentPolygon = [];
     renderAnnotations();
@@ -1229,10 +1439,13 @@ function initDrawing() {
     if (deleteMode) {
       const hit = hitTestAnnotation(col, row);
       if (hit) {
+        pushUndo();
         annotations = annotations.filter(a => a !== hit);
         if (selectedAnnotation === hit) selectedAnnotation = null;
         renderAnnotations();
         saveAnnotations();
+        renderAnnotationList();
+        renderLabelPanel();
       }
       return;
     }
@@ -1321,10 +1534,13 @@ function showContextMenu(x, y, annotation) {
     div.textContent = (annotation.label === lc.name ? '● ' : '  ') + lc.name;
     div.style.color = lc.color;
     div.addEventListener('click', () => {
+      pushUndo();
       annotation.label = lc.name;
       hideContextMenu();
       renderAnnotations();
       saveAnnotations();
+      renderAnnotationList();
+      renderLabelPanel();
     });
     menu.appendChild(div);
   }
@@ -1333,11 +1549,14 @@ function showContextMenu(x, y, annotation) {
   delDiv.textContent = 'Delete';
   delDiv.className = 'delete-option';
   delDiv.addEventListener('click', () => {
+    pushUndo();
     annotations = annotations.filter(a => a !== annotation);
     if (selectedAnnotation === annotation) selectedAnnotation = null;
     hideContextMenu();
     renderAnnotations();
     saveAnnotations();
+    renderAnnotationList();
+    renderLabelPanel();
   });
   menu.appendChild(delDiv);
 
@@ -1360,11 +1579,18 @@ function renderLabelPanel() {
   const panel = ui.labelPanel;
   panel.innerHTML = '<span style="color:#7a7aa0;">Drawing as:</span>';
 
+  // Count annotations per label
+  const counts = {};
+  for (const ann of annotations) {
+    counts[ann.label] = (counts[ann.label] || 0) + 1;
+  }
+
   for (const lc of labelClasses) {
     const isSelected = selectedLabel === lc.name;
+    const count = counts[lc.name] || 0;
     const btn = document.createElement('button');
     btn.className = 'label-btn' + (isSelected ? ' selected' : '');
-    btn.textContent = lc.name;
+    btn.textContent = lc.name + (count > 0 ? ` (${count})` : '');
     btn.style.borderColor = lc.color;
     btn.style.color = lc.color;
     if (isSelected) {
@@ -1400,18 +1626,38 @@ function hideNewLabelDialog() {
 
 // ========== ANNOTATION PERSISTENCE ==========
 function saveAnnotations() {
-  const normalized = annotations.map(normalizeAnnotationObject).filter(Boolean);
-  annotations = normalized;
-  const jsonl = normalized.map(a => JSON.stringify(a)).join('\n');
+  const jsonl = annotations.map(a => JSON.stringify(a)).join('\n');
   try {
     localStorage.setItem('sonarlabel_annotations', jsonl);
   } catch (e) {}
 }
 
+function saveLabelClasses() {
+  try {
+    localStorage.setItem('sonarlabel_labels', JSON.stringify(labelClasses));
+  } catch (e) {}
+}
+
+function loadLabelClasses() {
+  try {
+    const raw = localStorage.getItem('sonarlabel_labels');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter(l => l && typeof l.name === 'string' && typeof l.color === 'string');
+        if (valid.length > 0) {
+          labelClasses = valid;
+          if (!labelClasses.find(l => l.name === selectedLabel)) {
+            selectedLabel = labelClasses[0].name;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 function downloadAnnotations() {
-  const normalized = annotations.map(normalizeAnnotationObject).filter(Boolean);
-  annotations = normalized;
-  const data = normalized.map(a => JSON.stringify(a)).join('\n');
+  const data = annotations.map(a => JSON.stringify(a)).join('\n');
 
   const blob = new Blob([data], { type: 'application/jsonl' });
   const url = URL.createObjectURL(blob);
@@ -1423,6 +1669,7 @@ function downloadAnnotations() {
 }
 
 async function loadAnnotations(file) {
+  if (annotations.length > 0 && !confirm(`Replace ${annotations.length} existing annotation(s) with contents of "${file.name}"?`)) return;
   const text = await file.text();
   const raw = parseAnnotationText(text);
   if (!text.trim() || raw.length === 0) {
@@ -1432,6 +1679,7 @@ async function loadAnnotations(file) {
   annotations = raw.map(normalizeAnnotationObject).filter(Boolean);
   ensureLoadedLabelsExist();
   renderLabelPanel();
+  renderAnnotationList();
 
   renderAnnotations();
   if (sonarData) {
@@ -1445,6 +1693,13 @@ async function loadAnnotations(file) {
 function initKeyboard() {
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT') return;
+
+    // Undo/Redo
+    if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+      return;
+    }
 
     if (e.key === 'd' || e.key === 'D') {
       toggleDrawingMode();
@@ -1532,36 +1787,27 @@ function toggleDeleteMode() {
 
 // ========== RESIZE HANDLING ==========
 function updateViewSize() {
-  viewWidth = parseInt(ui.viewWidthInput.value) || 800;
-  viewHeight = parseInt(ui.viewHeightInput.value) || 600;
-  lastMouseDisplayX = Math.max(0, Math.min(viewWidth, lastMouseDisplayX));
-  const container = ui.sonarContainer;
-  container.style.width = viewWidth + 'px';
-  container.style.height = viewHeight + 'px';
-
-  // Force map to re-layout after height change
+  autoSizeCanvas();
   setTimeout(() => map.invalidateSize(), 0);
-
-  if (sonarData) {
-    clampRowOffset();
-    refreshSonarView();
-  }
 }
 
 // ========== INIT ==========
 function init() {
   bindUIRefs();
   ui.appVersion.textContent = `SonarLabel version ${VERSION}`;
+  loadLabelClasses();
   initMap();
   initScrollbar();
   initScrollWheel();
   initBoxZoom();
   initDrawing();
   initKeyboard();
+  initResizeHandle();
   renderLabelPanel();
+  renderAnnotationList();
 
-  // Set initial container height
-  updateViewSize();
+  // Initial auto-size after layout settles
+  requestAnimationFrame(() => autoSizeCanvas());
 
   // File input
   ui.fileInput.addEventListener('change', async (e) => {
@@ -1580,9 +1826,6 @@ function init() {
     renderSonar();
   });
 
-  // View height
-  ui.viewWidthInput.addEventListener('change', updateViewSize);
-  ui.viewHeightInput.addEventListener('change', updateViewSize);
   ui.paletteSelect.addEventListener('change', (e) => {
     currentPalette = e.target.value;
     if (sonarData) renderSonar();
@@ -1608,6 +1851,16 @@ function init() {
   ui.btnPhysicalAR.addEventListener('click', togglePhysicalAR);
   ui.btnResetView.addEventListener('click', resetView);
 
+  // Brightness/contrast
+  ui.brightnessSlider.addEventListener('input', (e) => {
+    brightness = parseInt(e.target.value) || 0;
+    if (sonarData) renderSonar();
+  });
+  ui.contrastSlider.addEventListener('input', (e) => {
+    contrast = parseInt(e.target.value) || 0;
+    if (sonarData) renderSonar();
+  });
+
   // Save/Load
   ui.btnDownload.addEventListener('click', downloadAnnotations);
   ui.loadAnnotationsInput.addEventListener('change', (e) => {
@@ -1627,6 +1880,7 @@ function init() {
     if (name && !labelClasses.find(l => l.name === name)) {
       labelClasses.push({ name, color });
       selectedLabel = name;
+      saveLabelClasses();
       renderLabelPanel();
       hideNewLabelDialog();
       saveAnnotations();
@@ -1636,12 +1890,10 @@ function init() {
     if (e.key === 'Enter') ui.newLabelOk.click();
   });
 
-  // Window resize
+  // Window resize — auto-resize canvas to fill available space
   window.addEventListener('resize', () => {
-    if (sonarData) {
-      renderSonar();
-      map.invalidateSize();
-    }
+    autoSizeCanvas();
+    map.invalidateSize();
   });
 }
 
