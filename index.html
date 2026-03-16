@@ -892,16 +892,6 @@ function drawPolygonOnCanvas(ctx, polygon, color, isSelected) {
   ctx.closePath();
   ctx.stroke();
   ctx.setLineDash([]);
-
-  // Draw vertices
-  for (const [row, col] of polygon) {
-    const y = row - scrollTop;
-    const x = dataColToDisplay(col);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
 }
 
 function getLabelColor(label) {
