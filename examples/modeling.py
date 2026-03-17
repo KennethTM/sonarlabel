@@ -1,6 +1,7 @@
 # %%
 import json
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 import lightning as L
 import albumentations as A
@@ -17,7 +18,7 @@ import segmentation_models_pytorch as smp
 
 # Paths
 labels_path = "annotations_many.jsonl"
-sonar_path  = "Bromme 01.sl3"
+sonar_path  = "bromme.sl3"
 
 # Data / dataset
 patch_size  = 512   # model input resolution (pixels)
@@ -223,24 +224,123 @@ val_dl   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_worker
 
 # %%
 # Model, loss, optimizer
+class DoubleConv(nn.Module):
+    """Two 3x3 convolutions with padding to preserve HxW."""
+
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+
+class UpSampleConv(nn.Module):
+    """Nearest-neighbor 2x upsampling followed by a 3x3 conv block."""
+
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode="nearest"),
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+
+class SimpleUNet(nn.Module):
+    """Classic U-Net-style encoder/decoder with skip connections.
+
+    Uses padded convolutions so output spatial size matches input spatial size.
+    """
+
+    def __init__(self, in_channels=2, out_channels=1, base_channels=32):
+        super().__init__()
+
+        c1 = base_channels
+        c2 = base_channels * 2
+        c3 = base_channels * 4
+        c4 = base_channels * 8
+        c5 = base_channels * 16
+
+        self.enc1 = DoubleConv(in_channels, c1)
+        self.pool1 = nn.MaxPool2d(2)
+
+        self.enc2 = DoubleConv(c1, c2)
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.enc3 = DoubleConv(c2, c3)
+        self.pool3 = nn.MaxPool2d(2)
+
+        self.enc4 = DoubleConv(c3, c4)
+        self.pool4 = nn.MaxPool2d(2)
+
+        self.bottleneck = DoubleConv(c4, c5)
+
+        self.up4 = UpSampleConv(c5, c4)
+        self.dec4 = DoubleConv(c4 + c4, c4)
+
+        self.up3 = UpSampleConv(c4, c3)
+        self.dec3 = DoubleConv(c3 + c3, c3)
+
+        self.up2 = UpSampleConv(c3, c2)
+        self.dec2 = DoubleConv(c2 + c2, c2)
+
+        self.up1 = UpSampleConv(c2, c1)
+        self.dec1 = DoubleConv(c1 + c1, c1)
+
+        self.head = nn.Conv2d(c1, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        e1 = self.enc1(x)
+        e2 = self.enc2(self.pool1(e1))
+        e3 = self.enc3(self.pool2(e2))
+        e4 = self.enc4(self.pool3(e3))
+
+        b = self.bottleneck(self.pool4(e4))
+
+        d4 = self.up4(b)
+        d4 = self.dec4(torch.cat([d4, e4], dim=1))
+
+        d3 = self.up3(d4)
+        d3 = self.dec3(torch.cat([d3, e3], dim=1))
+
+        d2 = self.up2(d3)
+        d2 = self.dec2(torch.cat([d2, e2], dim=1))
+
+        d1 = self.up1(d2)
+        d1 = self.dec1(torch.cat([d1, e1], dim=1))
+
+        return self.head(d1)
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-model = smp.Unet(
-    encoder_name="resnet18",
-    encoder_weights=None,   # 2-channel input — no ImageNet pretraining
+model = SimpleUNet(
     in_channels=2,
-    classes=1,
+    out_channels=1,
+    base_channels=16,
 ).to(device)
+
+n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Trainable parameters: {n_params:,}")
 
 _dice_loss = smp.losses.DiceLoss(mode="binary")
 _bce_loss  = smp.losses.SoftBCEWithLogitsLoss()
 
 def loss_fn(logits, targets):
     return _dice_loss(logits, targets) + _bce_loss(logits, targets)
-
-n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Trainable parameters: {n_params:,}")
 
 # %%
 # Lightning module
@@ -265,8 +365,9 @@ class SidescanSegmentation(L.LightningModule):
         x, y   = batch
         logits = self.model(x)                              # (B, 1, H, W)
         loss   = self.loss_fn(logits, y.unsqueeze(1).float())
+        probs  = torch.sigmoid(logits)
         tp, fp, fn, tn = smp.metrics.get_stats(
-            logits, y.unsqueeze(1), mode="binary", threshold=0.5
+            probs, y.unsqueeze(1), mode="binary", threshold=0.5
         )
         return loss, tp, fp, fn, tn
 
@@ -315,7 +416,6 @@ checkpoint_cb = ModelCheckpoint(
     monitor="val/iou",
     mode="max",
     save_top_k=1,
-    filename="best-{epoch:02d}-{val/iou:.4f}",
     verbose=True,
 )
 logger = TensorBoardLogger(save_dir="logs")
