@@ -23,17 +23,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #status { font-size: 12px; color: #7a7aa0; margin-left: auto; }
 
 /* Main layout */
-#main { display: flex; overflow: auto; padding: 8px; gap: 8px; align-items: stretch; }
-#map-panel { width: 33.3%; min-width: 250px; display: flex; flex-direction: column; border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
+#main { display: flex; flex: 1; height: 0; overflow: hidden; padding: 8px; gap: 0; align-items: stretch; }
+#map-panel { flex: 0 0 33.3%; min-width: 150px; display: flex; flex-direction: column; border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
 #map { flex: 1; min-height: 0; }
-#map-info { padding: 6px 10px; background: #16213e; font-size: 12px; color: #a0a0c0; border-top: 1px solid #0f3460; }
+#map-info { padding: 6px 10px; background: #16213e; font-size: 12px; color: #a0a0c0; border-top: 1px solid #0f3460; flex-shrink: 0; }
 
-#sonar-panel { display: flex; flex-direction: column; position: relative; }
-#sonar-area { display: flex; flex-direction: row; }
-#sonar-container { overflow: hidden; position: relative; cursor: crosshair; }
+#panel-divider { width: 6px; background: #0d1b36; border-left: 1px solid #0f3460; border-right: 1px solid #0f3460; cursor: col-resize; flex-shrink: 0; transition: background 0.15s; }
+#panel-divider:hover, #panel-divider.dragging { background: #1a5276; }
+
+#sonar-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; padding: 0 0 0 8px; }
+#sonar-area { flex: 1; min-height: 0; display: flex; flex-direction: row; }
+#sonar-container { flex: 1; min-width: 0; overflow: hidden; position: relative; cursor: grab; }
+#sonar-container.drawing { cursor: crosshair !important; }
+#sonar-container.panning { cursor: grabbing !important; }
 #sonar-canvas { display: block; }
 #annotation-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
-#sonar-container.drawing #annotation-canvas { pointer-events: auto; cursor: crosshair; }
+#sonar-container.drawing #annotation-canvas { pointer-events: auto; cursor: crosshair !important; }
 
 /* Vertical scrollbar */
 #sonar-scrollbar { width: 18px; background: #0d1b36; border-left: 1px solid #0f3460; display: flex; align-items: center; justify-content: center; }
@@ -41,11 +46,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #scrollbar-thumb { width: 10px; background: #0f3460; border-radius: 5px; position: absolute; left: 0; min-height: 20px; cursor: grab; }
 #scrollbar-thumb:hover { background: #1a5276; }
 
-/* Vertical zoom control */
-#zoom-panel { width: 42px; background: #0d1b36; border-left: 1px solid #0f3460; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px 0; }
-#zoom-x { writing-mode: vertical-lr; direction: rtl; width: 24px; height: 100%; max-height: 260px; }
-#zoom-x-label { font-size: 11px; color: #a0a0c0; min-width: 32px; text-align: center; }
-#btn-reset-view { padding: 2px 6px; font-size: 11px; }
+/* Vertical zoom/aspect control */
+#zoom-panel { width: 60px; background: #0d1b36; border-left: 1px solid #0f3460; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 0; }
+.zoom-panel-slider-group { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; justify-content: center; max-height: 45%; }
+.zoom-panel-name { font-size: 10px; color: #6a6a8a; letter-spacing: 0.05em; text-transform: uppercase; }
+.zoom-panel-value { font-size: 11px; color: #a0a0c0; }
+#zoom-x { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 100%; max-height: 180px; }
+#aspect-input { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 100%; max-height: 180px; }
+#btn-reset-view { padding: 2px 6px; font-size: 11px; flex-shrink: 0; }
 
 /* Label panel */
 #label-panel { padding: 6px 10px; background: #16213e; border-top: 1px solid #0f3460; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
@@ -57,7 +65,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #hints-bar { display: flex; gap: 16px; flex-wrap: wrap; padding: 4px 10px; background: #0d1b36; border: 1px solid #0f3460; border-radius: 4px; margin-bottom: 6px; font-size: 11px; color: #5a5a7a; }
 #hints-bar b { color: #8888a0; }
 
-#sonar-area { border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; }
+#sonar-area { border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; margin-bottom: 0; }
 
 /* Depth info overlay */
 #depth-info { position: absolute; bottom: 42px; right: 24px; background: rgba(22,33,62,0.9); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #a0a0c0; pointer-events: none; z-index: 10; }
@@ -90,8 +98,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <button id="btn-draw" title="Draw polygon (D)">Draw (D)</button>
   <button id="btn-delete-mode" title="Delete mode (X)">Delete (X)</button>
   <div class="sep"></div>
-  <label>Width: <input type="number" id="view-width" value="800" min="300" max="3000" step="50"></label>
-  <label>Height: <input type="number" id="view-height" value="600" min="200" max="2000" step="50"></label>
   <label>Palette:
     <select id="palette-select">
       <option value="sonarlight">Default</option>
@@ -106,7 +112,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div class="sep"></div>
   <button id="btn-download" type="button">Save Annotations</button>
   <label>Load Annotations: <input type="file" id="load-annotations" accept=".jsonl"></label>
-  <span id="app-version" style="font-size:12px; color:#7a7aa0;">SonarLabel version 1.0.0</span>
+  <span id="app-version" style="font-size:12px; color:#7a7aa0;">SonarLabel version 1.1.0</span>
   <span id="status">Load an SL3 file to begin</span>
 </div>
 
@@ -115,12 +121,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div id="map"></div>
     <div id="map-info">No data loaded</div>
   </div>
+  <div id="panel-divider"></div>
   <div id="sonar-panel">
     <div id="depth-info">Depth: --</div>
     <div id="hints-bar">
-      <span>🖱 <b>Scroll</b> — pan vertically</span>
-      <span>⇧ <b>Shift+Scroll</b> — pan horizontally</span>
-      <span>⌥ <b>Alt+Scroll</b> — zoom at cursor</span>
+      <span>🖱 <b>Drag</b> — pan &nbsp;|&nbsp; <b>Scroll</b> — pan vertically</span>
+      <span>⌃ <b>Ctrl+Scroll</b> — zoom at cursor</span>
       <span><b>D</b> — draw &nbsp;|&nbsp; <b>X</b> — delete &nbsp;|&nbsp; <b>N</b> — normalize &nbsp;|&nbsp; <b>R</b> — reset view</span>
     </div>
     <div id="sonar-area">
@@ -133,10 +139,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <div id="scrollbar-thumb"></div>
         </div>
       </div>
-      <div id="zoom-panel" title="Alt+Wheel to zoom at cursor. Shift+Wheel to pan horizontally.">
-        <span id="zoom-x-label">1.00x</span>
-        <input type="range" id="zoom-x" min="1" max="8" step="0.25" value="1">
-        <button id="btn-reset-view" title="Reset zoom and horizontal pan (R)">Reset (R)</button>
+      <div id="zoom-panel" title="Ctrl+Scroll to zoom at cursor">
+        <div class="zoom-panel-slider-group">
+          <span class="zoom-panel-name">Zoom</span>
+          <input type="range" id="zoom-x" min="1" max="16" step="0.25" value="1">
+          <span id="zoom-x-label" class="zoom-panel-value">1.00x</span>
+        </div>
+        <div class="zoom-panel-slider-group">
+          <span class="zoom-panel-name">Aspect</span>
+          <input type="range" id="aspect-input" min="-1" max="1" step="0.01" value="0" title="Row/col aspect ratio">
+          <span id="aspect-label" class="zoom-panel-value">1.00x</span>
+        </div>
+        <button id="btn-reset-view" title="Reset zoom and aspect (R)">Reset (R)</button>
       </div>
     </div>
     <div id="label-panel">
@@ -173,11 +187,8 @@ const SL3_HEADER_SIZE = 168;
 const VERSION = '1.0.0';
 const FRAME_PROGRESS_CHUNK = 5000;
 const ZOOM_WHEEL_FACTOR = 1.15;
-const HORIZONTAL_PAN_RATIO = 0.08;
-const HORIZONTAL_PAN_MIN = 10;
 const SCROLL_STEP_RATIO = 0.1;
 const SCROLL_STEP_MIN = 10;
-const WHEEL_PAN_DIVISOR = 500;
 const SCROLLBAR_MIN_THUMB_HEIGHT = 20;
 const SELECTED_LABEL_BG_ALPHA = '30';
 const NORMALIZATION_GAIN = 1.8;
@@ -265,7 +276,8 @@ let map, trackLine, highlightLine, trackPoints;
 let isDraggingScrollbar = false;
 let currentPalette = 'sonarlight';
 let normalizeColumns = false;
-let zoomX = 1;
+let zoom = 1;
+let aspect = 1.0;
 let colOffset = 0;
 let lastMouseDisplayX = viewWidth / 2;
 let ui = {};
@@ -287,8 +299,7 @@ function bindUIRefs() {
     btnDeleteMode: document.getElementById('btn-delete-mode'),
     zoomInput: document.getElementById('zoom-x'),
     zoomLabel: document.getElementById('zoom-x-label'),
-    viewWidthInput: document.getElementById('view-width'),
-    viewHeightInput: document.getElementById('view-height'),
+
     paletteSelect: document.getElementById('palette-select'),
     btnNormalize: document.getElementById('btn-normalize'),
     labelPanel: document.getElementById('label-panel'),
@@ -296,6 +307,10 @@ function bindUIRefs() {
     loadAnnotationsInput: document.getElementById('load-annotations'),
     btnDownload: document.getElementById('btn-download'),
     btnResetView: document.getElementById('btn-reset-view'),
+    aspectInput: document.getElementById('aspect-input'),
+    aspectLabel: document.getElementById('aspect-label'),
+    panelDivider: document.getElementById('panel-divider'),
+    mapPanel: document.getElementById('map-panel'),
     contextMenu: document.getElementById('context-menu'),
     appVersion: document.getElementById('app-version'),
     overlayBg: document.getElementById('overlay-bg'),
@@ -406,7 +421,14 @@ function parseAnnotationText(text) {
 
 function getVisibleCols() {
   if (!sonarData) return viewWidth;
-  return Math.max(1, sonarData.width / zoomX);
+  return Math.max(1, sonarData.width / zoom);
+}
+function getVisibleRows() {
+  if (!sonarData) return viewHeight;
+  return Math.max(1, Math.floor(viewHeight / pixelsPerRow()));
+}
+function pixelsPerRow() {
+  return zoom * aspect;
 }
 
 function clampColOffset() {
@@ -417,31 +439,45 @@ function clampColOffset() {
   const maxOffset = Math.max(0, sonarData.width - getVisibleCols());
   colOffset = Math.max(0, Math.min(maxOffset, colOffset));
 }
+function clampScrollTop() {
+  if (!sonarData) { scrollTop = 0; return; }
+  const maxScroll = Math.max(0, sonarData.totalRows - getVisibleRows());
+  scrollTop = Math.max(0, Math.min(maxScroll, scrollTop));
+}
 
-function setZoomAtDisplayX(newZoom, displayX) {
+function setZoomAtCursor(newZoom, displayX, displayY) {
   if (!sonarData) return;
-  const oldVisible = getVisibleCols();
-  const anchorRatio = Math.max(0, Math.min(1, displayX / viewWidth));
-  const anchorCol = colOffset + anchorRatio * oldVisible;
+  const oldPPR = pixelsPerRow();
+  const oldVisibleCols = getVisibleCols();
 
-  zoomX = Math.max(1, Math.min(8, newZoom));
-  const newVisible = getVisibleCols();
-  colOffset = anchorCol - anchorRatio * newVisible;
+  // Compute the data-space anchor point under the cursor
+  const anchorCol = colOffset + (displayX / viewWidth) * oldVisibleCols;
+  const anchorRow = scrollTop + displayY / oldPPR;
+
+  zoom = Math.max(1, Math.min(16, newZoom));
+
+  // Recompute offsets so the anchor point stays under the cursor
+  const newVisibleCols = getVisibleCols();
+  colOffset = anchorCol - (displayX / viewWidth) * newVisibleCols;
   clampColOffset();
 
-  const zoomInput = ui.zoomInput;
-  const zoomLabel = ui.zoomLabel;
-  if (zoomInput) zoomInput.value = zoomX.toFixed(2);
-  if (zoomLabel) zoomLabel.textContent = `${zoomX.toFixed(2)}x`;
+  const newPPR = pixelsPerRow();
+  scrollTop = Math.round(anchorRow - displayY / newPPR);
+  clampScrollTop();
+
+  if (ui.zoomInput) ui.zoomInput.value = zoom.toFixed(2);
+  if (ui.zoomLabel) ui.zoomLabel.textContent = `${zoom.toFixed(2)}x`;
 }
 
 function resetView() {
-  zoomX = 1;
+  zoom = 1;
+  aspect = 1.0;
   colOffset = 0;
-  const zoomInput = ui.zoomInput;
-  const zoomLabel = ui.zoomLabel;
-  if (zoomInput) zoomInput.value = '1';
-  if (zoomLabel) zoomLabel.textContent = '1.00x';
+  scrollTop = 0;
+  if (ui.zoomInput) ui.zoomInput.value = '1';
+  if (ui.zoomLabel) ui.zoomLabel.textContent = '1.00x';
+  if (ui.aspectInput) { ui.aspectInput.value = '0'; }
+  if (ui.aspectLabel) ui.aspectLabel.textContent = '1.00x';
   if (sonarData) renderSonar();
 }
 
@@ -623,7 +659,7 @@ function updateMapHighlight() {
   if (!sonarData || !highlightLine) return;
 
   const startRow = scrollTop;
-  const endRow = Math.min(scrollTop + viewHeight, sonarData.totalRows);
+  const endRow = Math.min(scrollTop + getVisibleRows(), sonarData.totalRows);
   const coords = [];
   // Sample every few rows for performance
   const step = Math.max(1, Math.floor((endRow - startRow) / 100));
@@ -647,7 +683,6 @@ function renderSonar() {
   const ctx = canvas.getContext('2d');
   const dw = viewWidth;
   const dataW = sonarData.width;
-  const h = Math.min(viewHeight, sonarData.totalRows - scrollTop);
 
   canvas.width = dw;
   canvas.height = viewHeight;
@@ -657,32 +692,44 @@ function renderSonar() {
   aCanvas.width = dw;
   aCanvas.height = viewHeight;
 
-  if (h <= 0) { ctx.clearRect(0, 0, dw, viewHeight); renderAnnotations(); return; }
-
-  const imgData = ctx.createImageData(dw, h);
+  const imgData = ctx.createImageData(dw, viewHeight);
   const pixels = imgData.data;
   const palette = PALETTES[currentPalette] || PALETTES.sonarlight;
   clampColOffset();
   const visibleCols = getVisibleCols();
+  const ppr = pixelsPerRow();
 
   if (normalizeColumns) {
-    const sampledValues = new Uint8Array(dw * h);
+    // First pass: sample each canvas row to a data row
+    const sampledValues = new Uint8Array(dw * viewHeight);
     const columnSums = new Float64Array(dw);
+    let sampledRows = 0;
 
-    for (let row = 0; row < h; row++) {
-      const echoRowOffset = (scrollTop + row) * dataW;
+    for (let py = 0; py < viewHeight; py++) {
+      const dataRow = scrollTop + Math.floor(py / ppr);
+      if (dataRow >= sonarData.totalRows) break;
+      const echoRowOffset = dataRow * dataW;
       for (let col = 0; col < dw; col++) {
         const srcCol = Math.min(dataW - 1, Math.floor(colOffset + (col * visibleCols / dw)));
         const val = sonarData.echoData[echoRowOffset + srcCol];
-        sampledValues[row * dw + col] = val;
+        sampledValues[py * dw + col] = val;
         columnSums[col] += val;
       }
+      sampledRows++;
     }
 
-    for (let row = 0; row < h; row++) {
-      const rowOffset = row * dw;
+    for (let py = 0; py < viewHeight; py++) {
+      const dataRow = scrollTop + Math.floor(py / ppr);
+      if (dataRow >= sonarData.totalRows) {
+        for (let col = 0; col < dw; col++) {
+          const idx = (py * dw + col) * 4;
+          pixels[idx] = 13; pixels[idx + 1] = 27; pixels[idx + 2] = 54; pixels[idx + 3] = 255;
+        }
+        continue;
+      }
+      const rowOffset = py * dw;
       for (let col = 0; col < dw; col++) {
-        const mean = columnSums[col] / h;
+        const mean = sampledRows > 0 ? columnSums[col] / sampledRows : 128;
         const centered = (sampledValues[rowOffset + col] - mean) * NORMALIZATION_GAIN + 128;
         const normalized = Math.max(0, Math.min(255, Math.round(centered)));
         const idx = (rowOffset + col) * 4;
@@ -693,14 +740,20 @@ function renderSonar() {
       }
     }
   } else {
-
-    // Scale data width -> display width with nearest-neighbor sampling + palette
-    for (let row = 0; row < h; row++) {
-      const echoRowOffset = (scrollTop + row) * dataW;
+    for (let py = 0; py < viewHeight; py++) {
+      const dataRow = scrollTop + Math.floor(py / ppr);
+      if (dataRow >= sonarData.totalRows) {
+        for (let col = 0; col < dw; col++) {
+          const idx = (py * dw + col) * 4;
+          pixels[idx] = 13; pixels[idx + 1] = 27; pixels[idx + 2] = 54; pixels[idx + 3] = 255;
+        }
+        continue;
+      }
+      const echoRowOffset = dataRow * dataW;
       for (let col = 0; col < dw; col++) {
         const srcCol = Math.min(dataW - 1, Math.floor(colOffset + (col * visibleCols / dw)));
         const val = sonarData.echoData[echoRowOffset + srcCol];
-        const idx = (row * dw + col) * 4;
+        const idx = (py * dw + col) * 4;
         pixels[idx] = palette[val * 3];
         pixels[idx + 1] = palette[val * 3 + 1];
         pixels[idx + 2] = palette[val * 3 + 2];
@@ -710,12 +763,6 @@ function renderSonar() {
   }
 
   ctx.putImageData(imgData, 0, 0);
-
-  // Clear any remaining area below data
-  if (h < viewHeight) {
-    ctx.fillStyle = '#0d1b36';
-    ctx.fillRect(0, h, dw, viewHeight - h);
-  }
 
   renderAnnotations();
   updateDepthInfo();
@@ -734,12 +781,14 @@ function displayColToData(col) {
 
 function updateDepthInfo() {
   if (!sonarData) return;
-  const midRow = Math.min(scrollTop + Math.floor(viewHeight / 2), sonarData.totalRows - 1);
+  const visibleRows = getVisibleRows();
+  const midRow = Math.min(scrollTop + Math.floor(visibleRows / 2), sonarData.totalRows - 1);
   const f = sonarData.frames[midRow];
   const colStart = Math.round(colOffset);
   const colEnd = Math.round(Math.min(sonarData.width, colOffset + getVisibleCols()));
+  const rowEnd = Math.min(scrollTop + visibleRows, sonarData.totalRows);
   ui.depthInfo.textContent =
-    `Row: ${scrollTop}-${Math.min(scrollTop + viewHeight, sonarData.totalRows)} / ${sonarData.totalRows} | Col: ${colStart}-${colEnd} / ${sonarData.width} | Zoom: ${zoomX.toFixed(2)}x | Norm: ${normalizeColumns ? 'On' : 'Off'} | Depth: ${f.depth.toFixed(1)}m`;
+    `Row: ${scrollTop}-${rowEnd} / ${sonarData.totalRows} | Col: ${colStart}-${colEnd} / ${sonarData.width} | Zoom: ${zoom.toFixed(2)}x | Aspect: ${aspect.toFixed(2)}x | Norm: ${normalizeColumns ? 'On' : 'Off'} | Depth: ${f.depth.toFixed(1)}m`;
 }
 
 // ========== SCROLLBAR (VERTICAL) ==========
@@ -748,9 +797,10 @@ function updateScrollbar() {
   const track = ui.scrollbarTrack;
   const thumb = ui.scrollbarThumb;
   const trackHeight = track.clientHeight;
-  const ratio = viewHeight / sonarData.totalRows;
+  const visibleRows = getVisibleRows();
+  const ratio = visibleRows / sonarData.totalRows;
   const thumbHeight = Math.max(SCROLLBAR_MIN_THUMB_HEIGHT, trackHeight * ratio);
-  const maxScroll = sonarData.totalRows - viewHeight;
+  const maxScroll = Math.max(0, sonarData.totalRows - visibleRows);
   const thumbPos = maxScroll > 0 ? (scrollTop / maxScroll) * (trackHeight - thumbHeight) : 0;
 
   thumb.style.height = thumbHeight + 'px';
@@ -773,7 +823,7 @@ function initScrollbar() {
       const thumbHeight = thumb.clientHeight;
       const maxTop = trackHeight - thumbHeight;
       const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
-      const maxScroll = sonarData.totalRows - viewHeight;
+      const maxScroll = Math.max(0, sonarData.totalRows - getVisibleRows());
       scrollTop = Math.round((newTop / maxTop) * maxScroll);
       if (isNaN(scrollTop)) scrollTop = 0;
       refreshSonarView();
@@ -792,11 +842,88 @@ function initScrollbar() {
     const rect = track.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
     const ratio = clickY / rect.height;
-    const maxScroll = sonarData.totalRows - viewHeight;
+    const maxScroll = Math.max(0, sonarData.totalRows - getVisibleRows());
     scrollTop = Math.round(ratio * maxScroll);
     scrollTop = Math.max(0, Math.min(maxScroll, scrollTop));
     refreshSonarView();
   });
+}
+
+// ========== MOUSE DRAG PANNING ==========
+let isPanning = false;
+let panStartX = 0, panStartY = 0;
+let panStartColOffset = 0, panStartScrollTop = 0;
+const PAN_DRAG_THRESHOLD = 4; // pixels before drag starts (allows click-through for annotation selection)
+
+function initPanning() {
+  const container = ui.sonarContainer;
+
+  container.addEventListener('mousedown', (e) => {
+    if (!sonarData) return;
+    // Left-click pan when not in draw/delete mode, or middle-click always
+    const leftClick = e.button === 0 && !drawingMode && !deleteMode;
+    const middleClick = e.button === 1;
+    if (!leftClick && !middleClick) return;
+
+    e.preventDefault();
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    panStartColOffset = colOffset;
+    panStartScrollTop = scrollTop;
+    const onMove = (e2) => {
+      const dx = e2.clientX - panStartX;
+      const dy = e2.clientY - panStartY;
+
+      // Only start panning after exceeding threshold
+      if (!isPanning && (dx * dx + dy * dy) < PAN_DRAG_THRESHOLD * PAN_DRAG_THRESHOLD) return;
+      if (!isPanning) {
+        isPanning = true;
+        container.classList.add('panning');
+      }
+
+      // Convert pixel deltas to data-space deltas
+      colOffset = panStartColOffset - dx * (getVisibleCols() / viewWidth);
+      clampColOffset();
+
+      const ppr = pixelsPerRow();
+      const rowDelta = dy / ppr;
+      scrollTop = Math.round(panStartScrollTop - rowDelta);
+      clampScrollTop();
+
+      refreshSonarView();
+    };
+
+    const onUp = (e2) => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+
+      if (isPanning) {
+        isPanning = false;
+        container.classList.remove('panning');
+      } else if (leftClick) {
+        // It was a click, not a drag — do annotation hit-test
+        const rect = container.getBoundingClientRect();
+        const displayX = e2.clientX - rect.left;
+        const displayY = e2.clientY - rect.top;
+        const col = Math.round(displayColToData(displayX));
+        const row = scrollTop + Math.round(displayY / pixelsPerRow());
+        const hit = hitTestAnnotation(col, row);
+        if (hit) {
+          selectedAnnotation = hit;
+          showContextMenu(e2.clientX, e2.clientY, hit);
+        } else {
+          selectedAnnotation = null;
+        }
+        renderAnnotations();
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Prevent middle-click auto-scroll
+  container.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 }
 
 // ========== SCROLL WITH MOUSE WHEEL ==========
@@ -811,34 +938,27 @@ function initScrollWheel() {
     if (!sonarData) return;
     e.preventDefault();
 
-    if (e.altKey) {
+    if (e.ctrlKey || e.metaKey) {
       const rect = container.getBoundingClientRect();
       const displayX = Math.max(0, Math.min(viewWidth, e.clientX - rect.left));
+      const displayY = Math.max(0, Math.min(viewHeight, e.clientY - rect.top));
       const zoomStep = e.deltaY < 0 ? ZOOM_WHEEL_FACTOR : 1 / ZOOM_WHEEL_FACTOR;
-      setZoomAtDisplayX(zoomX * zoomStep, displayX);
+      setZoomAtCursor(zoom * zoomStep, displayX, displayY);
       renderSonar();
       return;
     }
 
-    if (e.shiftKey) {
-      const panStep = Math.max(HORIZONTAL_PAN_MIN, Math.floor(getVisibleCols() * HORIZONTAL_PAN_RATIO));
-      colOffset += Math.sign(e.deltaY) * panStep;
+    // Pan horizontally (deltaX) and vertically (deltaY) simultaneously
+    if (Math.abs(e.deltaX) > 0) {
+      colOffset += e.deltaX * (getVisibleCols() / viewWidth);
       clampColOffset();
-      renderSonar();
-      return;
     }
-
-    if (zoomX > 1 && Math.abs(e.deltaX) > 0) {
-      const panStep = Math.max(1, getVisibleCols() / WHEEL_PAN_DIVISOR);
-      colOffset += e.deltaX * panStep;
-      clampColOffset();
-      renderSonar();
-      return;
+    if (Math.abs(e.deltaY) > 0) {
+      const visibleRows = getVisibleRows();
+      const delta = Math.sign(e.deltaY) * Math.max(SCROLL_STEP_MIN, Math.floor(visibleRows * SCROLL_STEP_RATIO));
+      const maxScroll = Math.max(0, sonarData.totalRows - visibleRows);
+      scrollTop = Math.max(0, Math.min(maxScroll, scrollTop + delta));
     }
-
-    const delta = Math.sign(e.deltaY) * Math.max(SCROLL_STEP_MIN, Math.floor(viewHeight * SCROLL_STEP_RATIO));
-    const maxScroll = sonarData.totalRows - viewHeight;
-    scrollTop = Math.max(0, Math.min(maxScroll, scrollTop + delta));
     refreshSonarView();
   }, { passive: false });
 }
@@ -865,7 +985,7 @@ function renderAnnotations() {
     ctx.beginPath();
     for (let i = 0; i < currentPolygon.length; i++) {
       const [row, col] = currentPolygon[i];
-      const y = row - scrollTop;
+      const y = (row - scrollTop) * pixelsPerRow();
       const x = dataColToDisplay(col);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
@@ -884,7 +1004,7 @@ function drawPolygonOnCanvas(ctx, polygon, color, isSelected) {
   ctx.beginPath();
   for (let i = 0; i < polygon.length; i++) {
     const [row, col] = polygon[i];
-    const y = row - scrollTop;
+    const y = (row - scrollTop) * pixelsPerRow();
     const x = dataColToDisplay(col);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
@@ -910,7 +1030,7 @@ function canvasEventToDataCoords(e, aCanvas) {
   const scaleY = aCanvas.height / rect.height;
   const displayCol = (e.clientX - rect.left) * scaleX;
   const col = Math.round(displayColToData(displayCol));
-  const row = scrollTop + Math.round((e.clientY - rect.top) * scaleY);
+  const row = scrollTop + Math.round((e.clientY - rect.top) * scaleY / pixelsPerRow());
   return [row, col];
 }
 
@@ -1215,21 +1335,45 @@ function toggleDeleteMode() {
 
 // ========== RESIZE HANDLING ==========
 function updateViewSize() {
-  viewWidth = parseInt(ui.viewWidthInput.value) || 800;
-  viewHeight = parseInt(ui.viewHeightInput.value) || 600;
-  lastMouseDisplayX = Math.max(0, Math.min(viewWidth, lastMouseDisplayX));
   const container = ui.sonarContainer;
-  container.style.width = viewWidth + 'px';
-  container.style.height = viewHeight + 'px';
-
-  // Force map to re-layout after height change
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if (w <= 0 || h <= 0) return;
+  viewWidth = w;
+  viewHeight = h;
+  lastMouseDisplayX = Math.max(0, Math.min(viewWidth, lastMouseDisplayX));
   setTimeout(() => map.invalidateSize(), 0);
-
   if (sonarData) {
-    const maxScroll = Math.max(0, sonarData.totalRows - viewHeight);
+    const maxScroll = Math.max(0, sonarData.totalRows - getVisibleRows());
     scrollTop = Math.min(scrollTop, maxScroll);
     refreshSonarView();
   }
+}
+
+function initDivider() {
+  const divider = ui.panelDivider;
+  const mapPanel = ui.mapPanel;
+  const main = document.getElementById('main');
+  divider.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    divider.classList.add('dragging');
+    const startX = e.clientX;
+    const startWidth = mapPanel.getBoundingClientRect().width;
+    const onMove = (e2) => {
+      const mainWidth = main.getBoundingClientRect().width;
+      const newWidth = Math.max(150, Math.min(mainWidth * 0.75, startWidth + (e2.clientX - startX)));
+      mapPanel.style.flex = `0 0 ${newWidth}px`;
+      map.invalidateSize();
+    };
+    const onUp = () => {
+      divider.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      updateViewSize();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 // ========== INIT ==========
@@ -1239,12 +1383,16 @@ function init() {
   initMap();
   initScrollbar();
   initScrollWheel();
+  initPanning();
   initDrawing();
   initKeyboard();
   renderLabelPanel();
 
-  // Set initial container height
-  updateViewSize();
+  // Set initial container size from layout, then observe resizes
+  setTimeout(updateViewSize, 0);
+  new ResizeObserver(updateViewSize).observe(ui.sonarContainer);
+
+  initDivider();
 
   // File input
   ui.fileInput.addEventListener('change', async (e) => {
@@ -1263,17 +1411,19 @@ function init() {
     renderSonar();
   });
 
-  // View height
-  ui.viewWidthInput.addEventListener('change', updateViewSize);
-  ui.viewHeightInput.addEventListener('change', updateViewSize);
   ui.paletteSelect.addEventListener('change', (e) => {
     currentPalette = e.target.value;
     if (sonarData) renderSonar();
   });
   ui.btnNormalize.addEventListener('click', toggleNormalization);
   ui.zoomInput.addEventListener('input', (e) => {
-    setZoomAtDisplayX(parseFloat(e.target.value || '1'), lastMouseDisplayX);
+    setZoomAtCursor(parseFloat(e.target.value || '1'), lastMouseDisplayX, viewHeight / 2);
     renderSonar();
+  });
+  ui.aspectInput.addEventListener('input', (e) => {
+    aspect = Math.pow(10, parseFloat(e.target.value || '0'));
+    ui.aspectLabel.textContent = `${aspect.toFixed(2)}x`;
+    if (sonarData) renderSonar();
   });
   ui.btnResetView.addEventListener('click', resetView);
 
@@ -1307,10 +1457,8 @@ function init() {
 
   // Window resize
   window.addEventListener('resize', () => {
-    if (sonarData) {
-      renderSonar();
-      map.invalidateSize();
-    }
+    map.invalidateSize();
+    updateViewSize();
   });
 }
 
