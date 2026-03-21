@@ -23,11 +23,11 @@ sonar_path  = "bromme.sl3"
 # Data / dataset
 patch_size  = 512   # model input resolution (pixels)
 base_height = 512   # nominal window height in raw sonar pixels
-n_samples   = 200   # random train samples per epoch
-batch_size  = 4
+n_samples   = 100   # random train samples per epoch
+batch_size  = 8
 
 # Training
-n_epochs = 10
+n_epochs = 100
 lr       = 3e-4
 
 # Inference / postprocessing
@@ -53,6 +53,86 @@ def polygons_to_mask(polygons, height, width, row_offset=0):
         if len(verts) >= 3:
             draw.polygon(verts, outline=1, fill=1)
     return np.array(mask_pil, dtype=np.uint8)
+
+
+def apply_egn(image):
+    """Empirical Gain Normalization (EGN) for sidescan imagery.
+
+    Input: 2D uint8 image (H, W)
+    Output: 2D uint8 image (H, W), gain-flattened
+    """
+    img_f = image.astype(np.float32)
+    col_means = np.mean(img_f, axis=0, keepdims=True)
+    col_means[col_means == 0] = 1e-6
+
+    normalized = img_f / col_means
+    low, high = np.percentile(normalized, (1, 99))
+    if high <= low:
+        return np.zeros_like(image, dtype=np.uint8)
+
+    normalized = np.clip((normalized - low) / (high - low) * 255.0, 0, 255)
+    return normalized.astype(np.uint8)
+
+
+class NadirAugmentation(A.ImageOnlyTransform):
+    """Perturb nadir width/intensity around the center across-track column."""
+
+    def __init__(self, width_range=(2, 14), intensity_range=(0.7, 1.7), p=0.5):
+        super().__init__(p=p)
+        self.width_range = width_range
+        self.intensity_range = intensity_range
+
+    def apply(self, img, **params):
+        img = img.copy()
+        h, w = img.shape[:2]
+        center = w // 2
+        width = np.random.randint(self.width_range[0], self.width_range[1] + 1)
+        intensity = np.random.uniform(*self.intensity_range)
+
+        start, end = max(0, center - width), min(w, center + width)
+        nadir_zone = img[:, start:end].astype(np.float32) * intensity
+        img[:, start:end] = np.clip(nadir_zone, 0, 255).astype(img.dtype)
+        return img
+
+
+def apply_ping_dropout(image, **kwargs):
+    """Randomly zero full ping rows to simulate sonar line dropout."""
+    img = image.copy()
+    for _ in range(np.random.randint(1, 4)):
+        y = np.random.randint(0, img.shape[0])
+        thickness = np.random.randint(1, 3)
+        img[y : y + thickness, :] = 0
+    return img
+
+
+# Sonar-aware training augmentation pipeline (no rotations)
+train_transform = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.ShiftScaleRotate(
+        shift_limit=0.04,
+        scale_limit=0.05,
+        rotate_limit=0,
+        border_mode=0,
+        p=0.5,
+    ),
+    NadirAugmentation(p=0.4),
+    A.Lambda(image=apply_ping_dropout, p=0.2),
+    A.CoarseDropout(
+        num_holes_range=(1, 6),
+        hole_height_range=(4, 20),
+        hole_width_range=(4, 20),
+        fill=0,
+        p=0.3,
+    ),
+    A.PixelDropout(dropout_prob=0.01, p=0.2),
+    A.GaussNoise(std_range=(0.02, 0.08), p=0.3),
+    A.MultiplicativeNoise(multiplier=(0.9, 1.1), p=0.3),
+])
+
+# Validation / normalization pipeline: map uint8 [0,255] -> float32 [-1,1]
+val_transform = A.Compose([
+    A.Normalize(mean=(0.5,), std=(0.5,)),
+])
 
 
 # %%
@@ -128,6 +208,37 @@ print(f"Train image: {train_img.shape}, mask foreground: {train_mask.mean():.3%}
 print(f"Val   image: {val_img.shape},  mask foreground: {val_mask.mean():.3%}")
 
 # %%
+# Augmentation preview (run this cell repeatedly to inspect random train augmentations)
+viz_h = min(base_height, train_img.shape[0])
+viz_r0 = np.random.randint(0, max(1, train_img.shape[0] - viz_h + 1))
+
+viz_crop = train_img[viz_r0 : viz_r0 + viz_h, :].astype(np.uint8)
+viz_mask = train_mask[viz_r0 : viz_r0 + viz_h, :].astype(np.uint8)
+viz_egn = apply_egn(viz_crop)
+
+viz_aug = train_transform(image=viz_egn, mask=viz_mask)
+viz_aug_img, viz_aug_mask = viz_aug["image"], viz_aug["mask"]
+
+show_orig = np.array(Image.fromarray(viz_egn).resize((patch_size, patch_size), Image.BILINEAR), dtype=np.uint8)
+show_aug = np.array(Image.fromarray(viz_aug_img).resize((patch_size, patch_size), Image.BILINEAR), dtype=np.uint8)
+show_mask = np.array(Image.fromarray(viz_mask).resize((patch_size, patch_size), Image.NEAREST), dtype=np.uint8)
+show_aug_mask = np.array(Image.fromarray(viz_aug_mask).resize((patch_size, patch_size), Image.NEAREST), dtype=np.uint8)
+
+fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+axes[0].imshow(show_orig, cmap="gray", vmin=0, vmax=255)
+axes[0].set_title("EGN (orig)")
+axes[1].imshow(show_aug, cmap="gray", vmin=0, vmax=255)
+axes[1].set_title("EGN + train aug")
+axes[2].imshow(show_mask, cmap="gray", vmin=0, vmax=1)
+axes[2].set_title("Mask (orig)")
+axes[3].imshow(show_aug_mask, cmap="gray", vmin=0, vmax=1)
+axes[3].set_title("Mask (aug)")
+for ax in axes:
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
+
+# %%
 # Dataset
 
 class SidescanDataset(Dataset):
@@ -136,13 +247,11 @@ class SidescanDataset(Dataset):
     Training: randomly samples windows with height ~ base_height * Uniform(0.5, 1.5).
     Validation: deterministic non-overlapping windows with stride = base_height.
 
-    Each sample is a 2-channel tensor:
-      ch0: img / 255                        (absolute intensity)
-      ch1: (img - col_means) / 255          (column-normalized, removes range-gain gradient)
+    Each sample is a 1-channel tensor from EGN-normalized sidescan intensity.
     Target: binary mask resized with nearest-neighbour interpolation.
     """
 
-    def __init__(self, img, mask, patch_size=512, base_height=512, n_samples=200, train=True, augment=False):
+    def __init__(self, img, mask, patch_size=512, base_height=512, n_samples=200, train=True, transform=None):
         self.img = img          # (H, W) uint8
         self.mask = mask        # (H, W) uint8
         self.H, self.W = img.shape
@@ -150,7 +259,8 @@ class SidescanDataset(Dataset):
         self.base_height = base_height
         self.train = train
         self.n_samples = n_samples
-        self.augment = augment
+        self.transform = transform
+        self.normalize = val_transform
 
         if not train:
             # Deterministic sliding windows with configurable stride.
@@ -161,13 +271,6 @@ class SidescanDataset(Dataset):
             if not starts or starts[-1] + base_height < self.H:
                 starts.append(max(0, self.H - base_height))
             self.val_starts = starts
-
-        if augment:
-            self.transform = A.Compose([
-                A.HorizontalFlip(p=0.5),
-                A.GaussNoise(std_range=(0.02, 0.08), p=0.5),   # std as fraction of 255
-                A.GaussianBlur(blur_limit=(3, 7), p=0.3),      # simulate varying sonar focus
-            ])
 
     def __len__(self):
         return self.n_samples if self.train else len(self.val_starts)
@@ -181,34 +284,52 @@ class SidescanDataset(Dataset):
             r0 = self.val_starts[idx]
             h = min(self.base_height, self.H - r0)
 
-        crop = self.img[r0 : r0 + h, :]        # (h, W) uint8
-        mask = self.mask[r0 : r0 + h, :]       # (h, W) uint8
+        crop = self.img[r0 : r0 + h, :].astype(np.uint8)  # (h, W) uint8
+        mask = self.mask[r0 : r0 + h, :].astype(np.uint8) # (h, W) uint8
 
-        if self.augment and self.train:
+        # Apply EGN before any augmentation.
+        crop = apply_egn(crop)
+
+        if self.transform is not None:
             out = self.transform(image=crop, mask=mask)
             crop, mask = out["image"], out["mask"]
 
         # Resize to square patch_size
         crop_r = np.array(
             Image.fromarray(crop).resize((self.patch_size, self.patch_size), Image.BILINEAR),
-            dtype=np.float32,
+            dtype=np.uint8,
         )
         mask_r = np.array(
             Image.fromarray(mask).resize((self.patch_size, self.patch_size), Image.NEAREST),
             dtype=np.uint8,
         )
 
-        ch0 = crop_r / 255.0
-        ch1 = (crop_r - crop_r.mean(axis=0)) / 255.0   # subtract per-column mean
+        crop_r = self.normalize(image=crop_r)["image"].astype(np.float32)  # [-1, 1]
+        mask_r = (mask_r > 0).astype(np.uint8)
 
-        x = torch.from_numpy(np.stack([ch0, ch1], axis=0)).float()  # (2, P, P)
+        x = torch.from_numpy(crop_r).unsqueeze(0).float()            # (1, P, P)
         y = torch.from_numpy(mask_r).long()                          # (P, P)
 
         return x, y
 
 
-train_ds = SidescanDataset(train_img, train_mask, patch_size=patch_size, base_height=base_height, n_samples=n_samples, train=True, augment=True)
-val_ds   = SidescanDataset(val_img,   val_mask,   patch_size=patch_size, base_height=base_height, train=False)
+train_ds = SidescanDataset(
+    train_img,
+    train_mask,
+    patch_size=patch_size,
+    base_height=base_height,
+    n_samples=n_samples,
+    train=True,
+    transform=train_transform,
+)
+val_ds   = SidescanDataset(
+    val_img,
+    val_mask,
+    patch_size=patch_size,
+    base_height=base_height,
+    train=False,
+    transform=None,
+)
 
 print(f"Train dataset: {len(train_ds)} samples")
 print(f"Val   dataset: {len(val_ds)} windows")
@@ -264,7 +385,7 @@ class SimpleUNet(nn.Module):
     Uses padded convolutions so output spatial size matches input spatial size.
     """
 
-    def __init__(self, in_channels=2, out_channels=1, base_channels=32):
+    def __init__(self, in_channels=1, out_channels=1, base_channels=32):
         super().__init__()
 
         c1 = base_channels
@@ -328,9 +449,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 model = SimpleUNet(
-    in_channels=2,
+    in_channels=1,
     out_channels=1,
-    base_channels=16,
+    base_channels=32,
 ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -344,7 +465,6 @@ def loss_fn(logits, targets):
 
 # %%
 # Lightning module
-
 class SidescanSegmentation(L.LightningModule):
     def __init__(self, model, loss_fn, lr=1e-3):
         super().__init__()
@@ -453,21 +573,25 @@ def windowed_inference(model, img, base_height, patch_size, threshold=0.5, devic
     if not starts or starts[-1] + base_height < H:
         starts.append(max(0, H - base_height))
 
+    normalize = val_transform
+
     prob_sum = np.zeros((H, W), dtype=np.float32)
     count    = np.zeros((H,),   dtype=np.float32)
 
     with torch.no_grad():
         for r0 in tqdm(starts, desc="Inference", unit="window"):
             h    = min(base_height, H - r0)
-            crop = img[r0 : r0 + h, :]
+            crop = img[r0 : r0 + h, :].astype(np.uint8)
+
+            # Match training preprocessing: EGN then normalization to [-1, 1].
+            crop = apply_egn(crop)
 
             crop_r = np.array(
                 Image.fromarray(crop).resize((patch_size, patch_size), Image.BILINEAR),
-                dtype=np.float32,
+                dtype=np.uint8,
             )
-            ch0 = crop_r / 255.0
-            ch1 = (crop_r - crop_r.mean(axis=0)) / 255.0
-            x   = torch.from_numpy(np.stack([ch0, ch1])).unsqueeze(0).float().to(device)
+            crop_r = normalize(image=crop_r)["image"].astype(np.float32)
+            x   = torch.from_numpy(crop_r).unsqueeze(0).unsqueeze(0).float().to(device)
 
             prob = model(x).sigmoid().squeeze().cpu().numpy()   # (patch_size, patch_size)
 
