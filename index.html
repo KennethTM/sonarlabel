@@ -192,6 +192,28 @@ const SCROLL_STEP_MIN = 10;
 const SCROLLBAR_MIN_THUMB_HEIGHT = 20;
 const SELECTED_LABEL_BG_ALPHA = '30';
 const NORMALIZATION_GAIN = 1.8;
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const DANISH_SPRING_ORTHO_WMTS_ENDPOINT = 'https://api.dataforsyningen.dk/orto_foraar_webm_DAF';
+const DANISH_SPRING_ORTHO_WMTS_LAYER = 'orto_foraar_webm';
+const DANISH_SPRING_ORTHO_WMTS_TILEMATRIXSET = 'DFD_GoogleMapsCompatible';
+const DANISH_SPRING_ORTHO_WMTS_FORMAT = 'image/jpeg';
+const DANISH_SPRING_ORTHO_TOKEN = 'd958f045dc1c1a8df8e6161868d3be12'; // Add your Dataforsyningen token here
+
+function buildDanishSpringWmtsUrl() {
+  if (!DANISH_SPRING_ORTHO_TOKEN) return '';
+  return `${DANISH_SPRING_ORTHO_WMTS_ENDPOINT}` +
+    `?SERVICE=WMTS` +
+    `&REQUEST=GetTile` +
+    `&VERSION=1.0.0` +
+    `&LAYER=${encodeURIComponent(DANISH_SPRING_ORTHO_WMTS_LAYER)}` +
+    `&STYLE=default` +
+    `&FORMAT=${encodeURIComponent(DANISH_SPRING_ORTHO_WMTS_FORMAT)}` +
+    `&TILEMATRIXSET=${encodeURIComponent(DANISH_SPRING_ORTHO_WMTS_TILEMATRIXSET)}` +
+    `&TILEMATRIX={z}` +
+    `&TILEROW={y}` +
+    `&TILECOL={x}` +
+    `&token=${encodeURIComponent(DANISH_SPRING_ORTHO_TOKEN)}`;
+}
 
 // ========== SONAR COLOR PALETTE ==========
 function buildPaletteFromStops(stops) {
@@ -280,7 +302,20 @@ let zoom = 1;
 let aspect = 1.0;
 let colOffset = 0;
 let lastMouseDisplayX = viewWidth / 2;
+let currentSonarFileBaseName = '';
 let ui = {};
+
+function getFileBaseName(filename) {
+  if (!filename) return '';
+  const dot = filename.lastIndexOf('.');
+  return dot > 0 ? filename.slice(0, dot) : filename;
+}
+
+function getAnnotationsDownloadName() {
+  return currentSonarFileBaseName
+    ? `${currentSonarFileBaseName}.jsonl`
+    : 'annotations.jsonl';
+}
 
 function bindUIRefs() {
   ui = {
@@ -627,10 +662,27 @@ function hideLoading() {
 // ========== MAP ==========
 function initMap() {
   map = L.map('map', { zoomControl: true }).setView([56, 10], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+
+  const osmLayer = L.tileLayer(OSM_TILE_URL, {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
+  });
+
+  const baseLayers = {
+    'OpenStreetMap': osmLayer,
+  };
+
+  if (DANISH_SPRING_ORTHO_TOKEN) {
+    const orthoUrl = buildDanishSpringWmtsUrl();
+    const danishSpringOrthoLayer = L.tileLayer(orthoUrl, {
+      maxZoom: 20,
+      attribution: '&copy; SDFI / Dataforsyningen',
+    });
+    baseLayers['DK Ortofoto Forår'] = danishSpringOrthoLayer;
+  }
+
+  osmLayer.addTo(map);
+  L.control.layers(baseLayers, null, { collapsed: false }).addTo(map);
 }
 
 function updateMap() {
@@ -1268,7 +1320,7 @@ function downloadAnnotations() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'annotations.jsonl';
+  a.download = getAnnotationsDownloadName();
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -1398,6 +1450,8 @@ function init() {
   ui.fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    currentSonarFileBaseName = getFileBaseName(file.name);
 
     sonarData = await parseSL3(file);
     if (!sonarData) return;
