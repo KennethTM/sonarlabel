@@ -17,18 +17,23 @@ from skimage import measure
 import segmentation_models_pytorch as smp
 
 # Paths
-labels_path = "annotations_many.jsonl"
-sonar_path  = "bromme.sl3"
+train_data_paths = [
+    ("emma_data/raw/Sonar_2020-09-14 BROMME 1.sl3", "emma_data/masks/Sonar_2020-09-14 BROMME 1.jsonl"),
+    ("emma_data/raw/Sonar_2020-09-14 BROMME 2.sl3", "emma_data/masks/Sonar_2020-09-14 BROMME 2.jsonl"),
+]
+valid_data_paths = [
+    ("emma_data/raw/Sonar_2025-08-08 Bromme 1.sl3", "emma_data/masks/Sonar_2025-08-08 Bromme 1.jsonl"),
+]
 
 # Data / dataset
 patch_size  = 512   # model input resolution (pixels)
 base_height = 512   # nominal window height in raw sonar pixels
-n_samples   = 100   # random train samples per epoch
-batch_size  = 8
+n_samples   = 256   # random train samples per epoch
+batch_size  = 16
 
 # Training
-n_epochs = 100
-lr       = 3e-4
+n_epochs = 200
+lr       = 1e-4
 
 # Inference / postprocessing
 threshold = 0.5     # probability threshold for binary mask
@@ -36,14 +41,6 @@ min_area  = 50      # minimum connected-component area (pixels) to keep
 
 # %%
 # Helper functions
-def annotation_row_bounds(annotations):
-    """Return (min_row, max_row) bounding all annotation polygons."""
-    all_vertices = [pt for poly in annotations["polygon"] for pt in poly]
-    min_row = int(np.floor(min(pt[0] for pt in all_vertices)))
-    max_row = int(np.ceil(max(pt[0] for pt in all_vertices)))
-    return min_row, max_row
-
-
 def polygons_to_mask(polygons, height, width, row_offset=0):
     """Rasterize polygons into a binary mask (0=background, 1=foreground)."""
     mask_pil = Image.new("L", (width, height), 0)
@@ -135,177 +132,157 @@ val_transform = A.Compose([
 ])
 
 
-# %%
-sonar = Sonar(sonar_path, clean=False)
+def preprocess_window(crop, mask=None, patch_size=512, transform=None, normalize=None):
+    """Shared preprocessing for train/val/inference.
 
-sidescan_df = sonar.df.query("survey == 'sidescan'").reset_index(drop=True)
-sidescan_img = np.stack(sidescan_df["frames"])
-n_pings, frame_width = sidescan_img.shape
+    Pipeline:
+      1) EGN
+      2) optional augmentation (train only)
+      3) resize to patch_size x patch_size
+      4) normalize to [-1, 1]
+    """
+    if normalize is None:
+        normalize = val_transform
 
-# %%
-annotations = pd.read_json(labels_path, lines=True)
+    crop = apply_egn(crop.astype(np.uint8))
 
-min_row, max_row = annotation_row_bounds(annotations)
-crop_start = max(0, min_row)
-crop_end = min(n_pings, max_row + 1)
-
-cropped_img = sidescan_img[crop_start:crop_end, :]
-cropped_df = sidescan_df.iloc[crop_start:crop_end].reset_index(drop=True)
-
-# %%
-# Train/val split along the row axis at a gap between annotation polygons (~80/20)
-
-def merge_intervals(intervals):
-    """Merge overlapping or adjacent [start, end] intervals."""
-    merged = []
-    for start, end in sorted(intervals):
-        if merged and start <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], end)
+    if transform is not None:
+        if mask is None:
+            out = transform(image=crop)
+            crop = out["image"]
         else:
-            merged.append([start, end])
-    return merged
+            out = transform(image=crop, mask=mask)
+            crop, mask = out["image"], out["mask"]
+
+    crop_r = np.array(
+        Image.fromarray(crop).resize((patch_size, patch_size), Image.BILINEAR),
+        dtype=np.uint8,
+    )
+    crop_r = normalize(image=crop_r)["image"].astype(np.float32)
+
+    if mask is None:
+        return crop_r
+
+    mask_r = np.array(
+        Image.fromarray(mask.astype(np.uint8)).resize((patch_size, patch_size), Image.NEAREST),
+        dtype=np.uint8,
+    )
+    mask_r = (mask_r > 0).astype(np.uint8)
+    return crop_r, mask_r
 
 
-annotations["min_row"] = annotations["polygon"].apply(lambda p: min(pt[0] for pt in p))
-annotations["max_row"] = annotations["polygon"].apply(lambda p: max(pt[0] for pt in p))
+def load_sonar_and_masks(sonar_path, labels_path, positive_labels=None):
+    sonar = Sonar(sonar_path, clean=False)
+    df = sonar.df.query("survey == 'sidescan'").reset_index(drop=True)
+    img = np.stack(df["frames"])
 
-merged = merge_intervals(zip(annotations["min_row"], annotations["max_row"]))
+    annotations = pd.read_json(labels_path, lines=True)
+    
+    if positive_labels is not None:
+        annotations = annotations[annotations["label"].isin(positive_labels)]
+        
+    mask = polygons_to_mask(
+        annotations["polygon"].tolist(),
+        height=img.shape[0],
+        width=img.shape[1],
+    )
+    return img, mask
 
-global_min = merged[0][0]
-global_max = merged[-1][1]
-target_split_row = global_min + int(0.8 * (global_max - global_min))
-
-# Find gaps between merged annotation clusters
-gaps = [(merged[i][1], merged[i + 1][0]) for i in range(len(merged) - 1)]
-
-# Pick the gap midpoint closest to the 80% target
-best_gap = min(gaps, key=lambda g: abs((g[0] + g[1]) // 2 - target_split_row))
-split_row = (best_gap[0] + best_gap[1]) // 2
-
-train_annotations = annotations[annotations["max_row"] <= split_row].reset_index(drop=True)
-val_annotations = annotations[annotations["min_row"] > split_row].reset_index(drop=True)
-
-print(f"Annotated row range: {global_min} – {global_max}")
-print(f"Split row: {split_row} (gap: {best_gap[0]}–{best_gap[1]})")
-print(f"Train annotations: {len(train_annotations)}, Val annotations: {len(val_annotations)}")
-print(f"Val fraction: {len(val_annotations) / len(annotations):.1%}")
+# Function for listing the set of labels in mask files
+def get_all_labels(label_paths):
+    labels = set()
+    for path in label_paths:
+        annotations = pd.read_json(path, lines=True)
+        labels.update(annotations["label"].unique().tolist())
+    return labels
 
 # %%
-# Build sidescan image crops and binary masks for train and val
+labels = get_all_labels([labels_path for _, labels_path in train_data_paths + valid_data_paths])
+print(f"Unique labels in dataset: {labels}")
 
-def make_split(split_annotations, sidescan_img, n_pings):
-    r0 = max(0, split_annotations["min_row"].min())
-    r1 = min(n_pings, split_annotations["max_row"].max() + 1)
-    img = sidescan_img[r0:r1, :]
-    mask = polygons_to_mask(split_annotations["polygon"], *img.shape, row_offset=r0)
-    return img, mask, r0, r1
+# Labels that should be 1 in the binary mask (everything else is background/0)
+plant_labels = ['Kransnålsalger', 
+                'Glinsende vandaks, no doubt', 
+                'Kransnålalger', 
+                'Chara', 
+                'Glinsende vandaks', 
+                'plant']
 
-
-train_img, train_mask, train_r0, train_r1 = make_split(train_annotations, sidescan_img, n_pings)
-val_img, val_mask, val_r0, val_r1 = make_split(val_annotations, sidescan_img, n_pings)
-
-print(f"Train image: {train_img.shape}, mask foreground: {train_mask.mean():.3%}")
-print(f"Val   image: {val_img.shape},  mask foreground: {val_mask.mean():.3%}")
+# Assert all plant labels are present in the dataset
+assert all(label in labels for label in plant_labels), "Some plant labels not found in dataset"
 
 # %%
-# Augmentation preview (run this cell repeatedly to inspect random train augmentations)
-viz_h = min(base_height, train_img.shape[0])
-viz_r0 = np.random.randint(0, max(1, train_img.shape[0] - viz_h + 1))
-
-viz_crop = train_img[viz_r0 : viz_r0 + viz_h, :].astype(np.uint8)
-viz_mask = train_mask[viz_r0 : viz_r0 + viz_h, :].astype(np.uint8)
-viz_egn = apply_egn(viz_crop)
-
-viz_aug = train_transform(image=viz_egn, mask=viz_mask)
-viz_aug_img, viz_aug_mask = viz_aug["image"], viz_aug["mask"]
-
-show_orig = np.array(Image.fromarray(viz_egn).resize((patch_size, patch_size), Image.BILINEAR), dtype=np.uint8)
-show_aug = np.array(Image.fromarray(viz_aug_img).resize((patch_size, patch_size), Image.BILINEAR), dtype=np.uint8)
-show_mask = np.array(Image.fromarray(viz_mask).resize((patch_size, patch_size), Image.NEAREST), dtype=np.uint8)
-show_aug_mask = np.array(Image.fromarray(viz_aug_mask).resize((patch_size, patch_size), Image.NEAREST), dtype=np.uint8)
-
-fig, axes = plt.subplots(1, 4, figsize=(16, 4))
-axes[0].imshow(show_orig, cmap="gray", vmin=0, vmax=255)
-axes[0].set_title("EGN (orig)")
-axes[1].imshow(show_aug, cmap="gray", vmin=0, vmax=255)
-axes[1].set_title("EGN + train aug")
-axes[2].imshow(show_mask, cmap="gray", vmin=0, vmax=1)
-axes[2].set_title("Mask (orig)")
-axes[3].imshow(show_aug_mask, cmap="gray", vmin=0, vmax=1)
-axes[3].set_title("Mask (aug)")
-for ax in axes:
-    ax.axis("off")
-plt.tight_layout()
-plt.show()
+train_data = [load_sonar_and_masks(sonar_path, labels_path, plant_labels) for sonar_path, labels_path in train_data_paths]
+valid_data = [load_sonar_and_masks(sonar_path, labels_path, plant_labels) for sonar_path, labels_path in valid_data_paths]
 
 # %%
 # Dataset
-
 class SidescanDataset(Dataset):
-    """Sliding-window dataset over sidescan imagery.
+    """Sliding-window dataset over multiple sidescan files.
 
-    Training: randomly samples windows with height ~ base_height * Uniform(0.5, 1.5).
-    Validation: deterministic non-overlapping windows with stride = base_height.
+    Training:
+      - each sample picks a random sonar file/mask pair
+      - then picks a random vertical window within that file
+
+    Validation:
+      - deterministic sliding windows over every validation file
+      - no randomization, so metrics are stable across epochs
 
     Each sample is a 1-channel tensor from EGN-normalized sidescan intensity.
     Target: binary mask resized with nearest-neighbour interpolation.
     """
 
-    def __init__(self, img, mask, patch_size=512, base_height=512, n_samples=200, train=True, transform=None):
-        self.img = img          # (H, W) uint8
-        self.mask = mask        # (H, W) uint8
-        self.H, self.W = img.shape
+    def __init__(self, data, patch_size=512, base_height=512, n_samples=100, train=True, transform=None, train_height_scale_range=(0.5, 1.5)):
+        self.data = data        # list[(img, mask)], each (H, W) uint8
         self.patch_size = patch_size
         self.base_height = base_height
         self.train = train
         self.n_samples = n_samples
         self.transform = transform
         self.normalize = val_transform
+        self.train_height_scale_range = train_height_scale_range
 
         if not train:
             # Deterministic sliding windows with configurable stride.
             # Use stride = base_height // 2 to match inference-time windowing
             # (only the center patch_size // 2 pixels are kept per window at inference).
             stride = base_height // 2
-            starts = list(range(0, self.H - base_height + 1, stride))
-            if not starts or starts[-1] + base_height < self.H:
-                starts.append(max(0, self.H - base_height))
-            self.val_starts = starts
+            self.val_windows = []
+            for file_idx, (img, _mask) in enumerate(self.data):
+                H, _W = img.shape
+                starts = list(range(0, max(1, H - base_height + 1), stride))
+                if not starts or starts[-1] + base_height < H:
+                    starts.append(max(0, H - base_height))
+                for r0 in starts:
+                    self.val_windows.append((file_idx, r0))
 
     def __len__(self):
-        return self.n_samples if self.train else len(self.val_starts)
+        return self.n_samples if self.train else len(self.val_windows)
 
     def __getitem__(self, idx):
         if self.train:
-            h = int(self.base_height * np.random.uniform(0.5, 1.5))
-            h = np.clip(h, 1, self.H)
-            r0 = np.random.randint(0, max(1, self.H - h + 1))
+            file_idx = np.random.randint(0, len(self.data))
+            img, mask = self.data[file_idx]
+            H, _W = img.shape
+            h = int(self.base_height * np.random.uniform(*self.train_height_scale_range))
+            h = np.clip(h, 1, H)
+            r0 = np.random.randint(0, max(1, H - h + 1))
         else:
-            r0 = self.val_starts[idx]
-            h = min(self.base_height, self.H - r0)
+            file_idx, r0 = self.val_windows[idx]
+            img, mask = self.data[file_idx]
+            H, _W = img.shape
+            h = min(self.base_height, H - r0)
 
-        crop = self.img[r0 : r0 + h, :].astype(np.uint8)  # (h, W) uint8
-        mask = self.mask[r0 : r0 + h, :].astype(np.uint8) # (h, W) uint8
+        crop = img[r0 : r0 + h, :].astype(np.uint8)   # (h, W) uint8
+        mask = mask[r0 : r0 + h, :].astype(np.uint8)  # (h, W) uint8
 
-        # Apply EGN before any augmentation.
-        crop = apply_egn(crop)
-
-        if self.transform is not None:
-            out = self.transform(image=crop, mask=mask)
-            crop, mask = out["image"], out["mask"]
-
-        # Resize to square patch_size
-        crop_r = np.array(
-            Image.fromarray(crop).resize((self.patch_size, self.patch_size), Image.BILINEAR),
-            dtype=np.uint8,
+        crop_r, mask_r = preprocess_window(
+            crop,
+            mask=mask,
+            patch_size=self.patch_size,
+            transform=self.transform,
+            normalize=self.normalize,
         )
-        mask_r = np.array(
-            Image.fromarray(mask).resize((self.patch_size, self.patch_size), Image.NEAREST),
-            dtype=np.uint8,
-        )
-
-        crop_r = self.normalize(image=crop_r)["image"].astype(np.float32)  # [-1, 1]
-        mask_r = (mask_r > 0).astype(np.uint8)
 
         x = torch.from_numpy(crop_r).unsqueeze(0).float()            # (1, P, P)
         y = torch.from_numpy(mask_r).long()                          # (P, P)
@@ -314,17 +291,15 @@ class SidescanDataset(Dataset):
 
 
 train_ds = SidescanDataset(
-    train_img,
-    train_mask,
+    train_data,
     patch_size=patch_size,
     base_height=base_height,
     n_samples=n_samples,
     train=True,
     transform=train_transform,
 )
-val_ds   = SidescanDataset(
-    val_img,
-    val_mask,
+val_ds = SidescanDataset(
+    valid_data,
     patch_size=patch_size,
     base_height=base_height,
     train=False,
@@ -334,14 +309,40 @@ val_ds   = SidescanDataset(
 print(f"Train dataset: {len(train_ds)} samples")
 print(f"Val   dataset: {len(val_ds)} windows")
 
+# %%
+# Visualize a random training sample (sonar imagery with mask overlay)
 x, y = train_ds[0]
+
 print(f"Sample x: {x.shape} {x.dtype}, range [{x.min():.2f}, {x.max():.2f}]")
 print(f"Sample y: {y.shape} {y.dtype}, unique values: {y.unique().tolist()}")
 
+# Convert tensors to numpy for plotting
+img_np = x.squeeze(0).cpu().numpy()            # normalized to [-1, 1]
+img_np = ((img_np + 1.0) * 0.5).clip(0, 1)     # back to [0, 1] for display
+mask_np = y.cpu().numpy().astype(np.uint8)
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+axes[0].imshow(img_np, cmap="gray", vmin=0, vmax=1)
+axes[0].set_title("Train sample (image)")
+axes[0].axis("off")
+
+axes[1].imshow(mask_np, cmap="gray", vmin=0, vmax=1)
+axes[1].set_title("Train sample (mask)")
+axes[1].axis("off")
+
+axes[2].imshow(img_np, cmap="gray", vmin=0, vmax=1)
+axes[2].imshow(mask_np, cmap="Reds", alpha=0.35, vmin=0, vmax=1)
+axes[2].set_title("Train sample (overlay)")
+axes[2].axis("off")
+
+plt.tight_layout()
+plt.show()
+
 # %%
 # DataLoaders
-train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=2, pin_memory=True, drop_last=True)
-val_dl   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=False)
+train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True, drop_last=False)
 
 # %%
 # Model, loss, optimizer
@@ -451,7 +452,7 @@ print(f"Using device: {device}")
 model = SimpleUNet(
     in_channels=1,
     out_channels=1,
-    base_channels=32,
+    base_channels=16,
 ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -466,7 +467,7 @@ def loss_fn(logits, targets):
 # %%
 # Lightning module
 class SidescanSegmentation(L.LightningModule):
-    def __init__(self, model, loss_fn, lr=1e-3):
+    def __init__(self, model, loss_fn, lr):
         super().__init__()
         self.model   = model
         self.loss_fn = loss_fn
@@ -548,10 +549,18 @@ trainer = L.Trainer(
     callbacks=[checkpoint_cb],
     log_every_n_steps=1,
     enable_progress_bar=True,
-    precision="bf16-mixed",
+    precision="bf16",
 )
 
 trainer.fit(lit_model, train_dl, val_dl)
+
+# %%
+# Load best model
+best_path = checkpoint_cb.best_model_path
+print(f"Best model path: {best_path}")
+lit_model = SidescanSegmentation(model, loss_fn, lr=lr)
+lit_model.load_state_dict(torch.load(best_path)["state_dict"])
+lit_model.eval()
 
 # %%
 # Windowed inference over the full sidescan image
@@ -583,14 +592,13 @@ def windowed_inference(model, img, base_height, patch_size, threshold=0.5, devic
             h    = min(base_height, H - r0)
             crop = img[r0 : r0 + h, :].astype(np.uint8)
 
-            # Match training preprocessing: EGN then normalization to [-1, 1].
-            crop = apply_egn(crop)
-
-            crop_r = np.array(
-                Image.fromarray(crop).resize((patch_size, patch_size), Image.BILINEAR),
-                dtype=np.uint8,
+            crop_r = preprocess_window(
+                crop,
+                mask=None,
+                patch_size=patch_size,
+                transform=None,
+                normalize=normalize,
             )
-            crop_r = normalize(image=crop_r)["image"].astype(np.float32)
             x   = torch.from_numpy(crop_r).unsqueeze(0).unsqueeze(0).float().to(device)
 
             prob = model(x).sigmoid().squeeze().cpu().numpy()   # (patch_size, patch_size)
@@ -608,7 +616,16 @@ def windowed_inference(model, img, base_height, patch_size, threshold=0.5, devic
     return pred_mask, avg_prob
 
 
-pred_mask, avg_prob = windowed_inference(lit_model.model, sidescan_img, base_height, patch_size, threshold=threshold, device=device)
+# Pick one full sidescan image for demo inference.
+inference_img = valid_data[0][0] if len(valid_data) > 0 else train_data[0][0]
+pred_mask, avg_prob = windowed_inference(
+    lit_model.model,
+    inference_img,
+    base_height,
+    patch_size,
+    threshold=threshold,
+    device=device,
+)
 print(f"Prediction mask shape: {pred_mask.shape}, foreground: {pred_mask.mean():.3%}")
 
 # %%
