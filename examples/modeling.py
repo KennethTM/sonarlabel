@@ -16,13 +16,17 @@ from PIL import Image, ImageDraw
 from skimage import measure
 import segmentation_models_pytorch as smp
 
+torch.set_float32_matmul_precision('high')
+
 # Paths
 train_data_paths = [
     ("emma_data/raw/Sonar_2020-09-14 BROMME 1.sl3", "emma_data/masks/Sonar_2020-09-14 BROMME 1.jsonl"),
-    ("emma_data/raw/Sonar_2020-09-14 BROMME 2.sl3", "emma_data/masks/Sonar_2020-09-14 BROMME 2.jsonl"),
+    #("emma_data/raw/Sonar_2020-09-14 BROMME 2.sl3", "emma_data/masks/Sonar_2020-09-14 BROMME 2.jsonl"),
+    ("emma_data/raw/Sonar_2025-08-08 Bromme 1.sl3", "emma_data/masks/Sonar_2025-08-08 Bromme 1.jsonl"),
 ]
 valid_data_paths = [
-    ("emma_data/raw/Sonar_2025-08-08 Bromme 1.sl3", "emma_data/masks/Sonar_2025-08-08 Bromme 1.jsonl"),
+    #("emma_data/raw/Sonar_2025-08-08 Bromme 1.sl3", "emma_data/masks/Sonar_2025-08-08 Bromme 1.jsonl"),
+    ("emma_data/raw/Sonar_2020-09-14 BROMME 2.sl3", "emma_data/masks/Sonar_2020-09-14 BROMME 2.jsonl"),
 ]
 
 # Data / dataset
