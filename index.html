@@ -521,120 +521,120 @@ function x2lon(x) { return (x / EARTH_POLAR_RADIUS) * (180 / Math.PI); }
 function y2lat(y) { return ((2 * Math.atan(Math.exp(y / EARTH_POLAR_RADIUS))) - (Math.PI / 2)) * (180 / Math.PI); }
 
 // ========== SL3 PARSER ==========
-async function parseSL3(file) {
-  showLoading('Reading file...');
-  const buffer = await file.arrayBuffer();
-  const view = new DataView(buffer);
+// Streams the file in chunks via file.slice() so multi-GB logs never need a single
+// ArrayBuffer (Chrome throws NotReadableError around 2 GiB).
+// Frame walk mirrors sonarlight.Sonar._decode(): position += frame_size, and a frame is
+// kept only if the new position < file length.
+// Echo bytes are the LAST echo_size bytes of each frame: the header is 168 bytes in frame
+// version 10, 180 in v13 and 184 in v14, so the header size is frame_size - echo_size.
+const READ_CHUNK_SIZE = 64 * 1024 * 1024;
+const ECHO_BLOCK_ROWS = 8192;
 
-  // File header
-  const version = view.getInt16(0, true);
-  const deviceId = view.getInt16(2, true);
+const SL3_OFFSETS = {
+  frameSize: 8,
+  surveyType: 12,
+  echoSize: 44,
+  waterDepth: 48,
+  x: 92,
+  y: 96,
+};
+
+async function parseSL3(file) {
+  const fileSize = file.size;
+  showLoading('Reading file...');
+
+  // Chunk window over the file: bytes [chunkStart, chunkStart + chunk.byteLength)
+  let chunk = new Uint8Array(0);
+  let chunkView = new DataView(chunk.buffer);
+  let chunkStart = 0;
+
+  // Make sure bytes [pos, pos + len) (clamped to EOF) are in the current chunk.
+  async function ensure(pos, len) {
+    const want = Math.min(pos + len, fileSize);
+    if (pos >= chunkStart && want <= chunkStart + chunk.byteLength) return;
+    const readEnd = Math.min(fileSize, pos + Math.max(READ_CHUNK_SIZE, len));
+    chunk = new Uint8Array(await file.slice(pos, readEnd).arrayBuffer());
+    chunkView = new DataView(chunk.buffer);
+    chunkStart = pos;
+  }
+
+  await ensure(0, FILE_HEADER_SIZE);
+  const version = chunkView.getInt16(0, true);
+  const deviceId = chunkView.getInt16(2, true);
 
   showLoading('Parsing frames...');
 
-  // First pass: decode frame headers using the same walk logic as Sonar._decode()
-  // (position += frame_size, append frame only if new position < buffer length).
-  const SL3_OFFSETS = {
-    frameSize: 8,
-    surveyType: 12,
-    minRange: 20,
-    maxRange: 24,
-    hardwareTime: 40,
-    echoSize: 44,
-    waterDepth: 48,
-    gpsSpeed: 84,
-    x: 92,
-    y: 96,
-    gpsHeading: 104,
-    seconds: 120,
-  };
-
   // Keep only survey_type == 5 (combined sidescan), matching Sonar survey mapping.
-  const sidescanFrames = [];
+  // Echo rows go into fixed-size blocks, concatenated once at the end.
+  let width = 0;
+  let totalRows = 0;
+  const blocks = [];
+  let block = null;
+  const frames = [];
+
   let pos = FILE_HEADER_SIZE;
   let frameCount = 0;
 
-  while (pos < buffer.byteLength) {
-    if (pos + SL3_HEADER_SIZE > buffer.byteLength) break;
+  while (pos < fileSize) {
+    if (pos + SL3_HEADER_SIZE > fileSize) break;
+    await ensure(pos, SL3_HEADER_SIZE);
+    const h = pos - chunkStart;
 
-    const frameSize = view.getUint16(pos + SL3_OFFSETS.frameSize, true);
+    const frameSize = chunkView.getUint16(h + SL3_OFFSETS.frameSize, true);
     if (frameSize === 0) break;
 
     const frameStart = pos;
     pos += frameSize;
-    if (pos > buffer.byteLength) break;
+    if (pos > fileSize) break;
 
     frameCount++;
 
-    if (pos < buffer.byteLength) {
-      const surveyType = view.getUint16(frameStart + SL3_OFFSETS.surveyType, true);
+    if (pos < fileSize && chunkView.getUint16(h + SL3_OFFSETS.surveyType, true) === 5) {
+      const echoSize = chunkView.getUint32(h + SL3_OFFSETS.echoSize, true);
+      const x = chunkView.getInt32(h + SL3_OFFSETS.x, true);
+      const y = chunkView.getInt32(h + SL3_OFFSETS.y, true);
+      const depth = chunkView.getFloat32(h + SL3_OFFSETS.waterDepth, true) * FEET_TO_METERS;
 
-      if (surveyType === 5) {
-        const x = view.getInt32(frameStart + SL3_OFFSETS.x, true);
-        const y = view.getInt32(frameStart + SL3_OFFSETS.y, true);
-        const minRange = view.getFloat32(frameStart + SL3_OFFSETS.minRange, true) * FEET_TO_METERS;
-        const maxRange = view.getFloat32(frameStart + SL3_OFFSETS.maxRange, true) * FEET_TO_METERS;
-        const waterDepth = view.getFloat32(frameStart + SL3_OFFSETS.waterDepth, true) * FEET_TO_METERS;
-        const gpsSpeed = view.getFloat32(frameStart + SL3_OFFSETS.gpsSpeed, true) * 0.5144;
-        const gpsHeading = view.getFloat32(frameStart + SL3_OFFSETS.gpsHeading, true);
-        const hardwareTime = view.getUint32(frameStart + SL3_OFFSETS.hardwareTime, true);
-        const seconds = view.getUint32(frameStart + SL3_OFFSETS.seconds, true) / 1000;
-        const echoSize = view.getUint32(frameStart + SL3_OFFSETS.echoSize, true);
+      // Consistent width: first sidescan frame's echo size
+      if (totalRows === 0) width = echoSize;
 
-        sidescanFrames.push({
-          offset: frameStart,
-          x,
-          y,
-          lat: y2lat(y),
-          lon: x2lon(x),
-          minRange,
-          maxRange,
-          depth: waterDepth,
-          gpsSpeed,
-          gpsHeading,
-          hardwareTime,
-          seconds,
-          datetime: new Date((hardwareTime + seconds) * 1000),
-          echoSize,
-        });
+      const rowInBlock = totalRows % ECHO_BLOCK_ROWS;
+      if (rowInBlock === 0) {
+        block = new Uint8Array(ECHO_BLOCK_ROWS * width);
+        blocks.push(block);
       }
+
+      await ensure(frameStart, frameSize);
+      const echoStart = frameStart + frameSize - echoSize - chunkStart;
+      const copyLen = Math.min(echoSize, width);
+      block.set(chunk.subarray(echoStart, echoStart + copyLen), rowInBlock * width);
+
+      frames.push({ lat: y2lat(y), lon: x2lon(x), depth });
+      totalRows++;
     }
 
     if (frameCount % FRAME_PROGRESS_CHUNK === 0) {
-      setLoadingProgress(Math.min(90, (pos / buffer.byteLength) * 90));
+      setLoadingProgress(Math.min(95, (pos / fileSize) * 95));
       await yieldToUI();
     }
   }
 
-  if (sidescanFrames.length === 0) {
+  if (totalRows === 0) {
     hideLoading();
     alert('No sidescan frames found in file.');
     return null;
   }
 
-  // Determine consistent width (use first frame's echo size)
-  const width = sidescanFrames[0].echoSize;
-  const totalRows = sidescanFrames.length;
+  showLoading(`Assembling ${totalRows} sidescan rows...`);
+  await yieldToUI();
 
-  showLoading(`Extracting ${totalRows} sidescan rows...`);
-
-  // Build contiguous echo data array
   const echoData = new Uint8Array(totalRows * width);
-  const frames = [];
-
-  for (let i = 0; i < sidescanFrames.length; i++) {
-    const sf = sidescanFrames[i];
-    const echoStart = sf.offset + SL3_HEADER_SIZE;
-    const copyLen = Math.min(sf.echoSize, width);
-    const src = new Uint8Array(buffer, echoStart, copyLen);
-    echoData.set(src, i * width);
-
-    frames.push({ lat: sf.lat, lon: sf.lon, depth: sf.depth });
-
-    if (i % FRAME_PROGRESS_CHUNK === 0) {
-      setLoadingProgress(90 + (i / sidescanFrames.length) * 10);
-      await yieldToUI();
-    }
+  const blockBytes = ECHO_BLOCK_ROWS * width;
+  for (let b = 0; b < blocks.length; b++) {
+    const off = b * blockBytes;
+    const n = Math.min(blockBytes, echoData.length - off);
+    echoData.set(blocks[b].subarray(0, n), off);
+    blocks[b] = null;
   }
 
   hideLoading();
@@ -1453,8 +1453,17 @@ function init() {
 
     currentSonarFileBaseName = getFileBaseName(file.name);
 
-    sonarData = await parseSL3(file);
-    if (!sonarData) return;
+    let parsed;
+    try {
+      parsed = await parseSL3(file);
+    } catch (err) {
+      console.error(err);
+      hideLoading();
+      alert(`Could not read "${file.name}": ${err.name}: ${err.message}`);
+      return;
+    }
+    if (!parsed) return;
+    sonarData = parsed;
 
     scrollTop = 0;
     resetView();

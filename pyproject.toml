@@ -9,7 +9,7 @@ dependencies = [
   "numpy>=1.24",
   "pandas>=2.3.3",
   "pillow>=10.0",
-  "sonarlight>=0.1.7",
+  "sonarlight>=0.1.8",
 ]
 
 [build-system]

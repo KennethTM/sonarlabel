@@ -67,7 +67,7 @@ def parse_sl3_js_equivalent(path: str) -> list[SidescanFrame]:
             water_depth = np.frombuffer(buf[frame_start + 48 : frame_start + 52], dtype="<f4")[0] * FEET_TO_METERS
             gps_heading = np.frombuffer(buf[frame_start + 104 : frame_start + 108], dtype="<f4")[0]
             echo_size = int.from_bytes(buf[frame_start + 44 : frame_start + 48], "little", signed=False)
-            echo = np.frombuffer(buf[frame_start + SL3_HEADER_SIZE : frame_start + SL3_HEADER_SIZE + echo_size], dtype="uint8")
+            echo = np.frombuffer(buf[frame_start + frame_size - echo_size : frame_start + frame_size], dtype="uint8")
 
             out.append(
                 SidescanFrame(
